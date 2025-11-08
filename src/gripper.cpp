@@ -56,8 +56,9 @@ void Gripper::setOrigin() {
         // Wait for ENTER press
     }
     sendMessage("command received, setting origin...");
-    gripperStepper.writeSteps(0);  // Reset step counter to 0
-    sendMessage("origin set");
+    enableStepper();
+    gripperStepper.setZero(); // Set current position as origin
+    sendMessage("origin set.");
 }
 
 void Gripper::setMicroStepping(int steppingMode) {
@@ -136,37 +137,43 @@ int Gripper::getCommand() {
     return commandReceived;
 }
 
-void Gripper::cmdStep() {
+void Gripper::testStepCmd() {
     static char commandBuffer[32];
     sendMessage("Enter speed (rpm*10): ");
     if (readCommand(commandBuffer, sizeof(commandBuffer))) {
         speed = atoi(commandBuffer);
+        Serial.print(speed);
         sendMessage("Enter micro steps: ");
         if (readCommand(commandBuffer, sizeof(commandBuffer))) {
             microSteppingMode = atoi(commandBuffer);
             setMicroStepping(microSteppingMode);
+            Serial.print(microSteppingMode);
         }
         sendMessage("Enter steps: ");
         if (readCommand(commandBuffer, sizeof(commandBuffer))) {
             steps = atoi(commandBuffer);
+            Serial.print(steps);
         }
     }
 }
 
-void Gripper::cmdRotate() {
+void Gripper::testRotateCmd() {
     static char commandBuffer[32];
     sendMessage("Enter speed (rpm*10): ");
     if (readCommand(commandBuffer, sizeof(commandBuffer))) {
         speed = atoi(commandBuffer);
+        Serial.print(speed);
         sendMessage("Enter micro steps: ");
         if (readCommand(commandBuffer, sizeof(commandBuffer))) {
             microSteppingMode = atoi(commandBuffer);
             setMicroStepping(microSteppingMode);
+            Serial.print(microSteppingMode);
         }
         sendMessage("Enter number of rotations: ");
         if (readCommand(commandBuffer, sizeof(commandBuffer))) {
             static int rotations = atoi(commandBuffer);
             steps = rotations * 200; // Assuming 200 steps per revolution
+            Serial.print(steps);
         }
     }
 }
