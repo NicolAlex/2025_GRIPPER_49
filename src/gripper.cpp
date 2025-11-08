@@ -2,23 +2,23 @@
 #include <MobaTools.h>
 #include "gripper.h"
 
-void sendMessage(const char* msg);
-char* readMessage();
-
 MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
 
 //================================================================================================================
 void Gripper::stepperUpdate() {
-    if (!enabled) {
-        stepperMoveSteps(0, 0);
-        return;
+    static int stepIncrement = 0;                     // persistent variable to hold required step delta
+    setMicroSteps();                                  // apply current micro-stepping pin configuration
+    step = gripperStepper.readSteps();                // read absolute step count from the stepper driver
+    // update logical position (convert hardware steps to user steps by dividing out micro-stepping)
+    pos += (int)((step - lastStep) / microSteppingMode);
+    // align lastStep to the nearest micro-step boundary we've just consumed
+    lastStep = step - ((step - lastStep) % microSteppingMode);
+    stepIncrement = finalPos - pos;                   // compute how many user-steps remain to reach finalPos
+    if (stepIncrement != 0) {
+        // request the stepper to move the remaining steps at configured speed
+        stepperMoveSteps(stepIncrement, speed);
     }
-    stepperMoveSteps(finalPos - pos, speed);
-    step = gripperStepper.readSteps();
-    pos += (step - lastStep)/microSteppingMode;
-    lastStep = step;
-    setMicroSteps(); // Ensure microstepping mode is maintained
 }
 
 //================================================================================================================
@@ -55,6 +55,8 @@ void Gripper::stepperDisable() {
 //================================================================================================================
 bool Gripper::setupGripper() {
     uint8_t attachResult = gripperStepper.attach(STEP_PIN, DIR_PIN);
+    delay(10);
+    lastStep = gripperStepper.readSteps();
     if (attachResult == 0) {
         sendMessage("Failed to attach stepper motor.");
         return false;
@@ -118,7 +120,25 @@ int32_t Gripper::getStepCount() {
     return step;
 }
 
+//================================================================================================================
+int32_t Gripper::getMicroSteppingMode() {
+    return microSteppingMode;
+}
 
+//================================================================================================================
+void Gripper::setPosition(int32_t newPos) {
+    finalPos = newPos;
+}
+
+//================================================================================================================
+void Gripper::setSpeed(int newSpeed) {
+    speed = newSpeed;
+}
+
+//================================================================================================================
+void Gripper::setMicroSteppingMode(int newMicroSteps) {
+    microSteppingMode = newMicroSteps;
+}
 
 
 
@@ -148,4 +168,29 @@ char* readMessage() {
         return buffer;
     }
     return nullptr;
+}
+
+int getCommand() {
+    char* msg = readMessage();
+    if (msg == nullptr) {
+        return -1; // No command available
+    }
+    if (strcmp(msg, "set_origin") == 0) {
+        return CMD_SET_ORIGIN;
+    } else if (strcmp(msg, "set_microstepping") == 0) {
+        return CMD_SET_MICROSTEPPING;
+    } else if (strcmp(msg, "move_until_closed") == 0) {
+        return CMD_MOVE_UNTIL_CLOSED;
+    } else if (strcmp(msg, "enable_stepper") == 0) {
+        return CMD_ENABLE_STEPPER;
+    } else if (strcmp(msg, "disable_stepper") == 0) {
+        return CMD_DISABLE_STEPPER;
+    } else if (strcmp(msg, "do_steps") == 0) {
+        return CMD_DO_STEPS;
+    } else if (strcmp(msg, "rotate") == 0) {
+        return CMD_ROTATE;
+    } else if (strcmp(msg, "setup_stepper") == 0) {
+        return CMD_SETUP_STEPPER;
+    }
+    return -1; // Unknown command
 }

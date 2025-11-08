@@ -1,10 +1,11 @@
-#define DIR_PIN 1
-#define STEP_PIN 2
-#define ENABLE_PIN 3
-#define MS1_PIN 4
-#define MS2_PIN 5
+#define DIR_PIN 13
+#define STEP_PIN 12
+#define ENABLE_PIN 14
+#define MS1_PIN 27
+#define MS2_PIN 26
 
 enum COMMANDS {
+    CMD_SETUP_STEPPER,
     CMD_SET_ORIGIN,
     CMD_SET_MICROSTEPPING,
     CMD_MOVE_UNTIL_CLOSED,
