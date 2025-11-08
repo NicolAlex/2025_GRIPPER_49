@@ -15,5 +15,17 @@ enum COMMANDS {
     CMD_ROTATE
 };
 
+#define INTERPOL_SAMPLES 5
+
+const float interpolSample[5][2] = {
+    {0.0, 0.0},
+    {10.0, 90.0},
+    {20.0, 180.0},
+    {30.0, 270.0},
+    {40.0, 360.0}
+};
+
+
+
 #define MAX_STEP_DIR 10000
 

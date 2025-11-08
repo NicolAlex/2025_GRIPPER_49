@@ -5,6 +5,19 @@
 MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
 
+Gripper::Gripper() {
+    // Constructor
+    MS1state = LOW; // Default microstepping state for MS1
+    MS2state = LOW; // Default microstepping state for MS2
+    enabled = false;
+    microSteppingMode = 2; // Default microstepping mode (2x)
+    speed = 0;
+    pos = 0;
+    finalPos = 0;
+    lastStep = 0;
+    step = 0;
+}
+
 //================================================================================================================
 void Gripper::stepperUpdate() {
     static int stepIncrement = 0;                     // persistent variable to hold required step delta
@@ -138,6 +151,38 @@ void Gripper::setSpeed(int newSpeed) {
 //================================================================================================================
 void Gripper::setMicroSteppingMode(int newMicroSteps) {
     microSteppingMode = newMicroSteps;
+}
+
+//================================================================================================================
+float Gripper::interpolToAngle(float length) {
+    if (length <= interpolSample[0][0]) {
+        return interpolSample[0][1];
+    }
+    if (length >= interpolSample[INTERPOL_SAMPLES - 1][0]) {
+        return interpolSample[INTERPOL_SAMPLES - 1][1];
+    }
+    for (int i = 0; i < INTERPOL_SAMPLES - 1; i++) {
+        if (length >= interpolSample[i][0] && length <= interpolSample[i + 1][0]) {
+            float ratio = (length - interpolSample[i][0]) / (interpolSample[i + 1][0] - interpolSample[i][0]);
+            return interpolSample[i][1] + ratio * (interpolSample[i + 1][1] - interpolSample[i][1]);
+        }
+    }
+}
+
+//================================================================================================================
+float Gripper::interpolToLength(float angle) {
+    if (angle <= interpolSample[0][1]) {
+        return interpolSample[0][0];
+    }
+    if (angle >= interpolSample[INTERPOL_SAMPLES - 1][1]) {
+        return interpolSample[INTERPOL_SAMPLES - 1][0];
+    }
+    for (int i = 0; i < INTERPOL_SAMPLES - 1; i++) {
+        if (angle >= interpolSample[i][1] && angle <= interpolSample[i + 1][1]) {
+            float ratio = (angle - interpolSample[i][1]) / (interpolSample[i + 1][1] - interpolSample[i][1]);
+            return interpolSample[i][0] + ratio * (interpolSample[i + 1][0] - interpolSample[i][0]);
+        }
+    }
 }
 
 

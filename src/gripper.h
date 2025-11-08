@@ -3,6 +3,9 @@
 
 class Gripper {
 public:
+    Gripper();
+    ~Gripper();
+    
     void stepperUpdate();
 
     void stepperSetDir(int direction, int runSpeed, int microSteps);
@@ -24,19 +27,22 @@ public:
     void stepperEnable();
     void stepperDisable();
 
+    float interpolToAngle(float length);
+    float interpolToLength(float angle);
+
 private:
 void setMicroSteps();
 void stepperMoveSteps(int steps, int runSpeed);
 
-bool MS1state = LOW; // Default microstepping state for MS1
-bool MS2state = LOW; // Default microstepping state for MS2
-bool enabled = false;
-int microSteppingMode = 2; // Default microstepping mode (2x)
-int speed = 100;
-int pos = 0;
-int finalPos = 1000;
-int lastStep = 99;
-int step = 0;
+bool MS1state; // Default microstepping state for MS1
+bool MS2state; // Default microstepping state for MS2
+bool enabled;
+int microSteppingMode; // Default microstepping mode (2x)
+int speed;
+int pos;
+int finalPos;
+int lastStep;
+int step;
 
 
 };
