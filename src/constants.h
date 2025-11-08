@@ -14,3 +14,5 @@ enum COMMANDS {
     CMD_ROTATE
 };
 
+#define MAX_STEP_DIR 10000
+

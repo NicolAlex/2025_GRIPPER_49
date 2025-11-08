@@ -2,179 +2,150 @@
 #include <MobaTools.h>
 #include "gripper.h"
 
-// Forward declarations so the functions are known before use
-bool sendMessage(const char* msg);
-bool readCommand(char* buffer, size_t length);
+void sendMessage(const char* msg);
+char* readMessage();
 
 MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
+
+//================================================================================================================
+void Gripper::stepperUpdate() {
+    if (!enabled) {
+        stepperMoveSteps(0, 0);
+        return;
+    }
+    stepperMoveSteps(finalPos - pos, speed);
+    step = gripperStepper.readSteps();
+    pos += (step - lastStep)/microSteppingMode;
+    lastStep = step;
+    setMicroSteps(); // Ensure microstepping mode is maintained
+}
+
+//================================================================================================================
+void Gripper::stepperMoveSteps(int steps, int runSpeed) {
+    gripperStepper.setSpeed(runSpeed * microSteppingMode);
+    gripperStepper.doSteps(steps * microSteppingMode);
+}
+
+//================================================================================================================
+void Gripper::stepperSetDir(int direction, int runSpeed, int microSteps) {
+    speed = runSpeed;
+    microSteppingMode = microSteps;
+    if (direction == 0) {
+        finalPos = 0;
+    } else if (direction > 0) {
+        finalPos = MAX_STEP_DIR;
+    } else if (direction < 0) {
+        finalPos = -MAX_STEP_DIR;
+    }
+}
+
+//================================================================================================================
+void Gripper::stepperEnable() {
+    digitalWrite(ENABLE_PIN, LOW); // Assuming active LOW
+    enabled = true;
+}
+
+//================================================================================================================
+void Gripper::stepperDisable() {
+    digitalWrite(ENABLE_PIN, HIGH); // Assuming active LOW
+    enabled = false;
+}
+
+//================================================================================================================
 bool Gripper::setupGripper() {
     uint8_t attachResult = gripperStepper.attach(STEP_PIN, DIR_PIN);
     if (attachResult == 0) {
-        Serial.println("Failed to attach stepper motor.");
+        sendMessage("Failed to attach stepper motor.");
         return false;
     }
     gripperStepper.attachEnable(ENABLE_PIN, 100, LOW); // Attach enable pin (ENABLE_PIN) with 100ms enable delay; active LOW
     return true;
 }
 
-void Gripper::stepperMove() {
-    static int speedMicroAdjusted = 0;
-    static int stepsMicroAdjusted = 0;
-    // Adjust speed based on microstepping mode
+void Gripper::stepperSetOrigin() {
+    stepperDisable();
+    sendMessage("Close gripper to set origin and press ENTER.");
+    while (true) {
+        char* msg = readMessage();
+        if (msg != nullptr && strcmp(msg, "\n") == 0) {
+            break;
+        }
+    }
+    pos = 0;
+    finalPos = 0;
+    sendMessage("Origin set.");
+    stepperEnable();
+}
+
+//================================================================================================================
+void Gripper::setMicroSteps() {
+    static bool MS1state = LOW;
+    static bool MS2state = LOW;
     switch (microSteppingMode) {
-        case 2: // Half step
-            speedMicroAdjusted = speed * 2;
-            stepsMicroAdjusted = steps * 2;
+        case 2:
+            MS1state = LOW;
+            MS2state = HIGH;
             break;
-        case 4: // Quarter step
-            speedMicroAdjusted = speed * 4;
-            stepsMicroAdjusted = steps * 4; 
+        case 4:
+            MS1state = HIGH;
+            MS2state = LOW;
             break;
-        case 8: // Eighth step
-            speedMicroAdjusted = speed * 8;
-            stepsMicroAdjusted = steps * 8;
+        case 8:
+            MS1state = LOW;
+            MS2state = LOW;
             break;
-        case 16: // Sixteenth step
-            speedMicroAdjusted = speed * 16;
-            stepsMicroAdjusted = steps * 16;
-            break;
-        default:
-            speedMicroAdjusted = speed;
-            stepsMicroAdjusted = steps;
-            break;
-    }
-    gripperStepper.setSpeed(speedMicroAdjusted); // Set speed in rpm*10
-    gripperStepper.writeSteps(stepsMicroAdjusted); // Move specified steps
-}
-
-void Gripper::setOrigin() {
-    disableStepper();  // Allow manual movement
-    sendMessage("close gripper manually to set origin and press ENTER");
-    static char commandBuffer[32];  // Buffer for serial input
-    while (!readCommand(commandBuffer, sizeof(commandBuffer))) {
-        // Wait for ENTER press
-    }
-    sendMessage("command received, setting origin...");
-    enableStepper();
-    gripperStepper.setZero(); // Set current position as origin
-    sendMessage("origin set.");
-}
-
-void Gripper::setMicroStepping(int steppingMode) {
-    switch (steppingMode) {
-        case 2: // Half step
-            digitalWrite(MS1_PIN, LOW);
-            digitalWrite(MS2_PIN, HIGH);
-            break;
-        case 4: // Quarter step
-            digitalWrite(MS1_PIN, HIGH);
-            digitalWrite(MS2_PIN, LOW);
-            break;
-        case 8: // Eighth step
-            digitalWrite(MS1_PIN, LOW);
-            digitalWrite(MS2_PIN, LOW);
-            break;
-        case 16: // Sixteenth step
-            digitalWrite(MS1_PIN, HIGH);
-            digitalWrite(MS2_PIN, HIGH);
+        case 16:
+            MS1state = HIGH;
+            MS2state = HIGH;
             break;
         default:
-            //sendMessage("Invalid microstepping mode. Use 1, 2, 4, or 8.");
-            return;
+            MS1state = LOW;
+            MS2state = LOW;
+            break;
     }
-    this->microSteppingMode = steppingMode;
-    // sendMessage("Microstepping mode set.");
+    digitalWrite(MS1_PIN, MS1state);
+    digitalWrite(MS2_PIN, MS2state);
 }
 
-void Gripper::moveUntilClosed() {
-
+//================================================================================================================
+int32_t Gripper::getPosition() {
+    return pos;
 }
 
-void Gripper::enableStepper() {
-    digitalWrite(ENABLE_PIN, LOW); // Assuming LOW enables the stepper
+//================================================================================================================
+int32_t Gripper::getStepCount() {
+    return step;
 }
 
-void Gripper::disableStepper() {
-    digitalWrite(ENABLE_PIN, HIGH); // Assuming HIGH disables the stepper
-}
 
-bool sendMessage(const char* msg) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void sendMessage(const char* msg) {
     Serial.println(msg);
-    return true;
 }
 
-bool readCommand(char* buffer, size_t length) {
-    size_t bytesRead = Serial.readBytesUntil('\n', buffer, length - 1);
-    buffer[bytesRead] = '\0';
-    return bytesRead > 0;
-}
-
-int Gripper::getCommand() {
-    static int commandReceived = 0;
-    static char commandBuffer[32];
-    if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-        // Process the command
+char* readMessage() {
+    static char buffer[100];
+    if (Serial.available()) {
+        size_t len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
+        buffer[len] = '\0'; // Null-terminate the string
+        return buffer;
     }
-    if (strcmp(commandBuffer, "dosteps") == 0) {
-        commandReceived = CMD_DO_STEPS;
-    } else if (strcmp(commandBuffer, "rotate") == 0) {
-        commandReceived = CMD_ROTATE;
-    } else if (strcmp(commandBuffer, "setorigin") == 0) {
-        commandReceived = CMD_SET_ORIGIN;
-    } else if (strcmp(commandBuffer, "setmicrostepping") == 0) {
-        commandReceived = CMD_SET_MICROSTEPPING;
-    } else if (strcmp(commandBuffer, "moveuntilclosed") == 0) {
-        commandReceived = CMD_MOVE_UNTIL_CLOSED;
-    } else if (strcmp(commandBuffer, "enablestepper") == 0) {
-        commandReceived = CMD_ENABLE_STEPPER;
-    } else if (strcmp(commandBuffer, "disablestepper") == 0) {
-        commandReceived = CMD_DISABLE_STEPPER;
-    } else {
-        sendMessage("Unknown command.");
-        return -1;
-    }
-    return commandReceived;
+    return nullptr;
 }
-
-void Gripper::testStepCmd() {
-    static char commandBuffer[32];
-    sendMessage("Enter speed (rpm*10): ");
-    if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-        speed = atoi(commandBuffer);
-        Serial.print(speed);
-        sendMessage("Enter micro steps: ");
-        if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-            microSteppingMode = atoi(commandBuffer);
-            setMicroStepping(microSteppingMode);
-            Serial.print(microSteppingMode);
-        }
-        sendMessage("Enter steps: ");
-        if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-            steps = atoi(commandBuffer);
-            Serial.print(steps);
-        }
-    }
-}
-
-void Gripper::testRotateCmd() {
-    static char commandBuffer[32];
-    sendMessage("Enter speed (rpm*10): ");
-    if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-        speed = atoi(commandBuffer);
-        Serial.print(speed);
-        sendMessage("Enter micro steps: ");
-        if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-            microSteppingMode = atoi(commandBuffer);
-            setMicroStepping(microSteppingMode);
-            Serial.print(microSteppingMode);
-        }
-        sendMessage("Enter number of rotations: ");
-        if (readCommand(commandBuffer, sizeof(commandBuffer))) {
-            static int rotations = atoi(commandBuffer);
-            steps = rotations * 200; // Assuming 200 steps per revolution
-            Serial.print(steps);
-        }
-    }
-}
-    
