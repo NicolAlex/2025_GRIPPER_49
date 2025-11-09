@@ -80,21 +80,26 @@ bool Gripper::setupGripper() {
 
 void Gripper::stepperSetOrigin() {
     stepperDisable();
-    sendMessage("Close gripper to set origin and press ENTER.");
-    while (true) {
+    sendMessage("Close gripper to set origin and enter \"ok\".");
+    while(1) {
+        while(!Serial.available()) {
+            // Wait for user input
+            delay(10);
+        }
         char* msg = readMessage();
-        if (msg != nullptr && strcmp(msg, "\n") == 0) {
-            break;
+        // Process both nullptr and empty string as valid ENTER key press
+        if (msg != nullptr && strcmp(msg, "ok") == 0) {
+            pos = 0;
+            finalPos = 0;
+            sendMessage("Origin set.");
+            stepperEnable();
+            return;
         }
     }
-    pos = 0;
-    finalPos = 0;
-    sendMessage("Origin set.");
-    stepperEnable();
 }
 
 //================================================================================================================
-void Gripper::setMicroSteps() {
+inline void Gripper::setMicroSteps() {
     static bool MS1state = LOW;
     static bool MS2state = LOW;
     switch (microSteppingMode) {
@@ -155,6 +160,7 @@ void Gripper::setMicroSteppingMode(int newMicroSteps) {
 
 //================================================================================================================
 float Gripper::interpolToAngle(float length) {
+    static float ratio = 0.0;
     if (length <= interpolSample[0][0]) {
         return interpolSample[0][1];
     }
@@ -163,14 +169,17 @@ float Gripper::interpolToAngle(float length) {
     }
     for (int i = 0; i < INTERPOL_SAMPLES - 1; i++) {
         if (length >= interpolSample[i][0] && length <= interpolSample[i + 1][0]) {
-            float ratio = (length - interpolSample[i][0]) / (interpolSample[i + 1][0] - interpolSample[i][0]);
+            ratio = (length - interpolSample[i][0]) / (interpolSample[i + 1][0] - interpolSample[i][0]);
             return interpolSample[i][1] + ratio * (interpolSample[i + 1][1] - interpolSample[i][1]);
         }
     }
+    // Fallback: return the last sample's angle to ensure a value is always returned
+    return interpolSample[INTERPOL_SAMPLES - 1][1];
 }
 
 //================================================================================================================
 float Gripper::interpolToLength(float angle) {
+    static float ratio = 0.0;
     if (angle <= interpolSample[0][1]) {
         return interpolSample[0][0];
     }
@@ -179,11 +188,14 @@ float Gripper::interpolToLength(float angle) {
     }
     for (int i = 0; i < INTERPOL_SAMPLES - 1; i++) {
         if (angle >= interpolSample[i][1] && angle <= interpolSample[i + 1][1]) {
-            float ratio = (angle - interpolSample[i][1]) / (interpolSample[i + 1][1] - interpolSample[i][1]);
+            ratio = (angle - interpolSample[i][1]) / (interpolSample[i + 1][1] - interpolSample[i][1]);
             return interpolSample[i][0] + ratio * (interpolSample[i + 1][0] - interpolSample[i][0]);
         }
     }
+    // Fallback: return the last sample's length to ensure a value is always returned
+    return interpolSample[INTERPOL_SAMPLES - 1][0];
 }
+
 
 
 
@@ -207,12 +219,29 @@ void sendMessage(const char* msg) {
 
 char* readMessage() {
     static char buffer[100];
-    if (Serial.available()) {
-        size_t len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-        buffer[len] = '\0'; // Null-terminate the string
+    if (!Serial.available()) {
+        return nullptr;
+    }
+
+    // If the next byte(s) are only CR/LF (ENTER), consume them and return an empty string
+    int peeked = Serial.peek();
+    if (peeked == '\n' || peeked == '\r') {
+        // consume all leading CR/LF characters
+        while (Serial.available() && (Serial.peek() == '\n' || Serial.peek() == '\r')) {
+            Serial.read();
+        }
+        buffer[0] = '\0';
         return buffer;
     }
-    return nullptr;
+
+    // Read a line up to '\n'
+    size_t len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
+    // strip trailing CR if present (handles CR+LF)
+    if (len > 0 && buffer[len - 1] == '\r') {
+        len--;
+    }
+    buffer[len] = '\0';
+    return buffer;
 }
 
 int getCommand() {

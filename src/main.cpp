@@ -32,15 +32,7 @@ void setup() {
 
 void loop() {
     static int cmd = -1;
-    static int cmd_temp = -1;
-    while(!Serial.available()) {
-        // Wait for command
-        delay(10);
-    }
-    cmd_temp = getCommand();
-    if (cmd_temp != -1) {
-        cmd = cmd_temp;
-    }
+    cmd = getCommand();
     if (cmd != -1) {
         switch (cmd) {
             case CMD_SETUP_STEPPER:
@@ -53,12 +45,12 @@ void loop() {
                 break;
             case CMD_SET_ORIGIN:
                 sendMessage("Setting origin...");
-                
+                gripper.stepperSetOrigin();
                 sendMessage("Origin set.");
                 break;
             case CMD_SET_MICROSTEPPING:
             {
-                sendMessage("Enter new microstepping mode (1, 2, 4, 8, 16):");
+                sendMessage("Enter new microstepping mode (2, 4, 8, 16):");
                 while(!Serial.available()) {
                     // Wait for user input
                     delay(10);
@@ -81,16 +73,19 @@ void loop() {
                 // Implement move until closed logic here
                 sendMessage("Movement complete.");
                 break;
+
             case CMD_ENABLE_STEPPER:
                 sendMessage("Enabling stepper...");
                 gripper.stepperEnable();
                 sendMessage("Stepper enabled.");
                 break;
+
             case CMD_DISABLE_STEPPER:
                 sendMessage("Disabling stepper...");
                 gripper.stepperDisable();
                 sendMessage("Stepper disabled.");
                 break;
+
             case CMD_DO_STEPS:
                 sendMessage("Enter position to move to:");
                 while(!Serial.available()) {
@@ -118,26 +113,24 @@ void loop() {
                         gripper.setSpeed(newSpeed);
                     }
                 }
-                while(!Serial.available()) {
-                    gripper.stepperUpdate();
-                    Serial.println(gripper.getPosition());
-                    Serial.println(gripper.getStepCount());
-                    Serial.println("----");
-                    delay(50);
-                }
-
-
                 break;
+
             case CMD_ROTATE:
                 sendMessage("Rotating...");
                 // Implement rotation logic here
                 sendMessage("Rotation complete.");
                 break;
+
             default:
                 sendMessage("Unknown command.");
                 break;
         }
     }
 
-    delay(500);
+        gripper.stepperUpdate();
+        Serial.println(gripper.getPosition());
+        Serial.println(gripper.getStepCount());
+        Serial.println("----");
+
+    delay(100);
 }

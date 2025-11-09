@@ -4,7 +4,7 @@
 class Gripper {
 public:
     Gripper();
-    ~Gripper();
+    //~Gripper();
     
     void stepperUpdate();
 
@@ -31,7 +31,7 @@ public:
     float interpolToLength(float angle);
 
 private:
-void setMicroSteps();
+inline void setMicroSteps();
 void stepperMoveSteps(int steps, int runSpeed);
 
 bool MS1state; // Default microstepping state for MS1
