@@ -20,6 +20,8 @@ Gripper::Gripper() {
 
 //================================================================================================================
 void Gripper::stepperUpdate() {
+    // enabling/disabling
+    digitalWrite(ENABLE_PIN, enabled ? LOW : HIGH); // Assuming active LOW
     static int stepIncrement = 0;                     // persistent variable to hold required step delta
     setMicroSteps();                                  // apply current micro-stepping pin configuration
     step = gripperStepper.readSteps();                // read absolute step count from the stepper driver
@@ -55,13 +57,13 @@ void Gripper::stepperSetDir(int direction, int runSpeed, int microSteps) {
 
 //================================================================================================================
 void Gripper::stepperEnable() {
-    digitalWrite(ENABLE_PIN, LOW); // Assuming active LOW
+    //digitalWrite(ENABLE_PIN, LOW); // Assuming active LOW
     enabled = true;
 }
 
 //================================================================================================================
 void Gripper::stepperDisable() {
-    digitalWrite(ENABLE_PIN, HIGH); // Assuming active LOW
+    //digitalWrite(ENABLE_PIN, HIGH); // Assuming active LOW
     enabled = false;
 }
 
@@ -74,7 +76,6 @@ bool Gripper::setupGripper() {
         sendMessage("Failed to attach stepper motor.");
         return false;
     }
-    gripperStepper.attachEnable(ENABLE_PIN, 100, LOW); // Attach enable pin (ENABLE_PIN) with 100ms enable delay; active LOW
     return true;
 }
 
@@ -103,11 +104,11 @@ inline void Gripper::setMicroSteps() {
     static bool MS1state = LOW;
     static bool MS2state = LOW;
     switch (microSteppingMode) {
-        case 2:
+        case 4:
             MS1state = LOW;
             MS2state = HIGH;
             break;
-        case 4:
+        case 2:
             MS1state = HIGH;
             MS2state = LOW;
             break;

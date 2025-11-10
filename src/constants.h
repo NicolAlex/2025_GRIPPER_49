@@ -1,8 +1,8 @@
-#define DIR_PIN 13
-#define STEP_PIN 12
-#define ENABLE_PIN 14
-#define MS1_PIN 27
-#define MS2_PIN 26
+#define DIR_PIN 14
+#define STEP_PIN 27
+#define ENABLE_PIN 26
+#define MS1_PIN 33
+#define MS2_PIN 25
 
 enum COMMANDS {
     CMD_SETUP_STEPPER,

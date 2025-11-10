@@ -14,9 +14,6 @@ Gripper gripper;
 
 void setup() {
     Serial.begin(115200);
-    pinMode(STEP_PIN, OUTPUT);
-    pinMode(DIR_PIN, OUTPUT);
-    pinMode(ENABLE_PIN, OUTPUT);
     pinMode(MS1_PIN, OUTPUT);
     pinMode(MS2_PIN, OUTPUT);
     pinMode(2, OUTPUT);
@@ -128,9 +125,21 @@ void loop() {
     }
 
         gripper.stepperUpdate();
+        Serial.print("Position: ");
         Serial.println(gripper.getPosition());
+        Serial.print("Step Count: ");
         Serial.println(gripper.getStepCount());
+
+        static uint lastTime = millis();
+        static uint timeEllapsed = 0;
+        timeEllapsed = millis() - lastTime;
+        Serial.print("Time ellapsed (ms): ");
+        Serial.println(timeEllapsed);
+        lastTime = millis();
+
         Serial.println("----");
+
+
 
     delay(100);
 }
