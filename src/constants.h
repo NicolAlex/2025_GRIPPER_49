@@ -3,6 +3,13 @@
 #define ENABLE_PIN 26
 #define MS1_PIN 33
 #define MS2_PIN 25
+#define LED1_PIN 21
+#define LED2_PIN 19
+#define LED3_PIN 18
+#define LED4_PIN 5
+#define LED5_PIN 17
+#define LED6_PIN 16
+#define BUZZER_PIN 32
 
 enum COMMANDS {
     CMD_SETUP_STEPPER,
@@ -14,6 +21,8 @@ enum COMMANDS {
     CMD_DO_STEPS,
     CMD_ROTATE
 };
+
+const int ledArray[6] = {LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN, LED5_PIN, LED6_PIN};
 
 #define INTERPOL_SAMPLES 5
 

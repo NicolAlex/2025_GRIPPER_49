@@ -36,6 +36,103 @@ void Gripper::stepperUpdate() {
     }
 }
 
+
+void Gripper::comamandHandler(int cmd) {
+    if (cmd != -1) {
+        switch (cmd) {
+            case CMD_SETUP_STEPPER:
+                sendMessage("Setting up stepper...");
+                if (setupGripper()) {
+                    sendMessage("Stepper setup complete.");
+                } else {
+                    sendMessage("Stepper setup failed.");
+                }
+                break;
+            case CMD_SET_ORIGIN:
+                sendMessage("Setting origin...");
+                stepperSetOrigin();
+                sendMessage("Origin set.");
+                break;
+            case CMD_SET_MICROSTEPPING:
+            {
+                sendMessage("Enter new microstepping mode (2, 4, 8, 16):");
+                while(!Serial.available()) {
+                    // Wait for user input
+                    delay(10);
+                }
+                char* msg = readMessage();
+                if (msg != nullptr) {
+                    int newMicroSteps = atoi(msg);
+                    if (newMicroSteps == 2 || newMicroSteps == 4 || newMicroSteps == 8 || newMicroSteps == 16) {
+                        setMicroSteppingMode(newMicroSteps);
+                        sendMessage("Microstepping set to ");
+                        Serial.println(getMicroSteppingMode());
+                    } else {
+                        sendMessage("Invalid microstepping mode.");
+                    }
+                }
+                break;
+            }
+            case CMD_MOVE_UNTIL_CLOSED:
+                sendMessage("Moving until closed...");
+                // Implement move until closed logic here
+                sendMessage("Movement complete.");
+                break;
+
+            case CMD_ENABLE_STEPPER:
+                sendMessage("Enabling stepper...");
+                stepperEnable();
+                sendMessage("Stepper enabled.");
+                break;
+
+            case CMD_DISABLE_STEPPER:
+                sendMessage("Disabling stepper...");
+                stepperDisable();
+                sendMessage("Stepper disabled.");
+                break;
+
+            case CMD_DO_STEPS:
+                sendMessage("Enter position to move to:");
+                while(!Serial.available()) {
+                    // Wait for user input
+                    delay(10);
+                }
+                {
+                    char* msg = readMessage();
+                    if (msg != nullptr) {
+                        int newPos = atoi(msg);
+                        setPosition(newPos);
+                        sendMessage("Moving to position ");
+                        Serial.println(getPosition());
+                    }
+                }
+                sendMessage("Enter rotation speed:");
+                while(!Serial.available()) {
+                    // Wait for user input
+                    delay(10);
+                }
+                {
+                    char* msg = readMessage();
+                    if (msg != nullptr) {
+                        int newSpeed = atoi(msg);
+                        setSpeed(newSpeed);
+                    }
+                }
+                break;
+
+            case CMD_ROTATE:
+                sendMessage("Rotating...");
+                // Implement rotation logic here
+                sendMessage("Rotation complete.");
+                break;
+
+            default:
+                sendMessage("Unknown command.");
+                break;
+        }
+    }
+}
+
 //================================================================================================================
 void Gripper::stepperMoveSteps(int steps, int runSpeed) {
     gripperStepper.setSpeed(runSpeed * microSteppingMode);
@@ -132,6 +229,11 @@ inline void Gripper::setMicroSteps() {
 //================================================================================================================
 int32_t Gripper::getPosition() {
     return pos;
+}
+
+//================================================================================================================
+int32_t Gripper::getFinalPosition() {
+    return finalPos;
 }
 
 //================================================================================================================
@@ -268,4 +370,59 @@ int getCommand() {
         return CMD_SETUP_STEPPER;
     }
     return -1; // Unknown command
+}
+
+
+
+
+
+
+void statusLedBlinking(bool enabled) {
+    static unsigned long lastTime = 0;
+    static int ledIndex = 0;
+    if (enabled) {
+        if (millis() - lastTime >= 50) { // Blink every 25 ms
+            // Turn off all LEDs
+            for (int i = 0; i < 4; i++) {
+                digitalWrite(ledArray[i], LOW);
+            }
+            // Turn on the current LED
+            digitalWrite(ledArray[ledIndex], HIGH);
+            // Move to the next LED
+            ledIndex = (ledIndex + 1) % 4;
+            lastTime = millis();
+        }
+    }
+
+    else {
+        digitalWrite(LED1_PIN, HIGH);
+        digitalWrite(LED2_PIN, LOW);
+        digitalWrite(LED3_PIN, LOW);
+        digitalWrite(LED4_PIN, LOW);
+    }
+}
+
+void buzzerBeep(int duration, bool setup) { // if setup is true, start the beep, if false, stop after duration
+    static unsigned long beepStartTime = 0;
+    static bool isBeeping = false;
+
+    if (setup) {
+        digitalWrite(BUZZER_PIN, HIGH);
+        beepStartTime = millis();
+        isBeeping = true;
+        return;
+    }
+
+    if (!isBeeping && setup == true) {
+        // Start the beep
+        digitalWrite(BUZZER_PIN, HIGH);
+        beepStartTime = millis();
+        isBeeping = true;
+    } else {
+        // Check if the duration has elapsed
+        if (millis() - beepStartTime >= duration) {
+            digitalWrite(BUZZER_PIN, LOW);
+            isBeeping = false;
+        }
+    }
 }

@@ -5,6 +5,8 @@ class Gripper {
 public:
     Gripper();
     //~Gripper();
+
+    void comamandHandler(int cmd);
     
     void stepperUpdate();
 
@@ -52,3 +54,6 @@ int step;
 void sendMessage(const char* msg);
 char* readMessage();
 int getCommand();
+
+void statusLedBlinking(bool enabled);
+void buzzerBeep(int duration, bool setup); // if setup is true, start the beep, if false, stop after duration
