@@ -12,7 +12,7 @@ Gripper gripper;
 
 // MoToStepper testStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
-/*
+
 void setup() {
     Serial.begin(115200);
     pinMode(MS1_PIN, OUTPUT);
@@ -47,7 +47,7 @@ void setup() {
 void loop() {
     static int cmd = -1;
     cmd = getCommand();
-    gripper.comamandHandler(cmd);
+    debugCommandHandler(cmd, &gripper);
 
         gripper.stepperUpdate();
 
@@ -81,6 +81,5 @@ void loop() {
 
     delay(1);
 }
-*/
 
 

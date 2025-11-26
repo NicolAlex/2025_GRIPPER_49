@@ -22,114 +22,17 @@ Gripper::Gripper() {
 void Gripper::stepperUpdate() {
     // enabling/disabling
     digitalWrite(ENABLE_PIN, enabled ? LOW : HIGH); // Assuming active LOW
-    static int stepIncrement = 0;                     // persistent variable to hold required step delta
-    setMicroSteps();                                  // apply current micro-stepping pin configuration
-    step = gripperStepper.readSteps();                // read absolute step count from the stepper driver
+    static int stepIncrement = 0; // persistent variable to hold required step delta
+    setMicroSteps(); // apply current micro-stepping pin configuration
+    step = gripperStepper.readSteps(); // read absolute step count from the stepper driver
     // update logical position (convert hardware steps to user steps by dividing out micro-stepping)
     pos += (int)((step - lastStep) / microSteppingMode);
     // align lastStep to the nearest micro-step boundary we've just consumed
     lastStep = step - ((step - lastStep) % microSteppingMode);
-    stepIncrement = finalPos - pos;                   // compute how many user-steps remain to reach finalPos
+    stepIncrement = finalPos - pos; // compute how many user-steps remain to reach finalPos
     if (stepIncrement != 0) {
         // request the stepper to move the remaining steps at configured speed
         stepperMoveSteps(stepIncrement, speed);
-    }
-}
-
-
-void Gripper::comamandHandler(int cmd) {
-    if (cmd != -1) {
-        switch (cmd) {
-            case CMD_SETUP_STEPPER:
-                sendMessage("Setting up stepper...");
-                if (setupGripper()) {
-                    sendMessage("Stepper setup complete.");
-                } else {
-                    sendMessage("Stepper setup failed.");
-                }
-                break;
-            case CMD_SET_ORIGIN:
-                sendMessage("Setting origin...");
-                stepperSetOrigin();
-                sendMessage("Origin set.");
-                break;
-            case CMD_SET_MICROSTEPPING:
-            {
-                sendMessage("Enter new microstepping mode (2, 4, 8, 16):");
-                while(!Serial.available()) {
-                    // Wait for user input
-                    delay(10);
-                }
-                char* msg = readMessage();
-                if (msg != nullptr) {
-                    int newMicroSteps = atoi(msg);
-                    if (newMicroSteps == 2 || newMicroSteps == 4 || newMicroSteps == 8 || newMicroSteps == 16) {
-                        setMicroSteppingMode(newMicroSteps);
-                        sendMessage("Microstepping set to ");
-                        Serial.println(getMicroSteppingMode());
-                    } else {
-                        sendMessage("Invalid microstepping mode.");
-                    }
-                }
-                break;
-            }
-            case CMD_MOVE_UNTIL_CLOSED:
-                sendMessage("Moving until closed...");
-                // Implement move until closed logic here
-                sendMessage("Movement complete.");
-                break;
-
-            case CMD_ENABLE_STEPPER:
-                sendMessage("Enabling stepper...");
-                stepperEnable();
-                sendMessage("Stepper enabled.");
-                break;
-
-            case CMD_DISABLE_STEPPER:
-                sendMessage("Disabling stepper...");
-                stepperDisable();
-                sendMessage("Stepper disabled.");
-                break;
-
-            case CMD_DO_STEPS:
-                sendMessage("Enter position to move to:");
-                while(!Serial.available()) {
-                    // Wait for user input
-                    delay(10);
-                }
-                {
-                    char* msg = readMessage();
-                    if (msg != nullptr) {
-                        int newPos = atoi(msg);
-                        setPosition(newPos);
-                        sendMessage("Moving to position ");
-                        Serial.println(getPosition());
-                    }
-                }
-                sendMessage("Enter rotation speed:");
-                while(!Serial.available()) {
-                    // Wait for user input
-                    delay(10);
-                }
-                {
-                    char* msg = readMessage();
-                    if (msg != nullptr) {
-                        int newSpeed = atoi(msg);
-                        setSpeed(newSpeed);
-                    }
-                }
-                break;
-
-            case CMD_ROTATE:
-                sendMessage("Rotating...");
-                // Implement rotation logic here
-                sendMessage("Rotation complete.");
-                break;
-
-            default:
-                sendMessage("Unknown command.");
-                break;
-        }
     }
 }
 
@@ -314,7 +217,98 @@ float Gripper::interpolToLength(float angle) {
 
 
 
+void debugCommandHandler(int cmd, Gripper* gripper) {
+    if (cmd != -1 && gripper != nullptr) {
+        switch (cmd) {
+            case CMD_SETUP_STEPPER:
+                sendMessage("Setting up stepper...");
+                if (gripper->setupGripper()) {
+                    sendMessage("Stepper setup complete.");
+                } else {
+                    sendMessage("Stepper setup failed.");
+                }
+                break;
+            case CMD_SET_ORIGIN:
+                sendMessage("Setting origin...");
+                gripper->stepperSetOrigin();
+                sendMessage("Origin set.");
+                break;
+            case CMD_SET_MICROSTEPPING:
+            {
+                sendMessage("Enter new microstepping mode (2, 4, 8, 16):");
+                while(!Serial.available()) {
+                    delay(10);
+                }
+                char* msg = readMessage();
+                if (msg != nullptr) {
+                    int newMicroSteps = atoi(msg);
+                    if (newMicroSteps == 2 || newMicroSteps == 4 || newMicroSteps == 8 || newMicroSteps == 16) {
+                        gripper->setMicroSteppingMode(newMicroSteps);
+                        sendMessage("Microstepping set to ");
+                        Serial.println(gripper->getMicroSteppingMode());
+                    } else {
+                        sendMessage("Invalid microstepping mode.");
+                    }
+                }
+                break;
+            }
+            case CMD_MOVE_UNTIL_CLOSED:
+                sendMessage("Moving until closed...");
+                // Implement move until closed logic here
+                sendMessage("Movement complete.");
+                break;
 
+            case CMD_ENABLE_STEPPER:
+                sendMessage("Enabling stepper...");
+                gripper->stepperEnable();
+                sendMessage("Stepper enabled.");
+                break;
+
+            case CMD_DISABLE_STEPPER:
+                sendMessage("Disabling stepper...");
+                gripper->stepperDisable();
+                sendMessage("Stepper disabled.");
+                break;
+
+            case CMD_DO_STEPS:
+                sendMessage("Enter position to move to:");
+                while(!Serial.available()) {
+                    delay(10);
+                }
+                {
+                    char* msg = readMessage();
+                    if (msg != nullptr) {
+                        int newPos = atoi(msg);
+                        gripper->setPosition(newPos);
+                        sendMessage("Moving to position ");
+                        Serial.println(gripper->getPosition());
+                    }
+                }
+                sendMessage("Enter rotation speed:");
+                while(!Serial.available()) {
+                    delay(10);
+                }
+                {
+                    char* msg = readMessage();
+                    if (msg != nullptr) {
+                        int newSpeed = atoi(msg);
+                        gripper->setSpeed(newSpeed);
+                    }
+                }
+                break;
+
+            case CMD_ROTATE:
+                sendMessage("Rotating...");
+                // Implement rotation logic here
+                sendMessage("Rotation complete.");
+                break;
+
+            default:
+                sendMessage("Unknown command.");
+                break;
+        }
+    }
+}
 
 void sendMessage(const char* msg) {
     Serial.println(msg);
