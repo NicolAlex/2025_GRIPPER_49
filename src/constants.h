@@ -12,6 +12,12 @@
 #define BUZZER_PIN 32
 #define PRESSURE_SENSOR_PIN 34
 
+// Absolute maximum stepper speed and acceleration
+#define MAX_STEPPER_SPEED 4200 // steps/min * 10;s
+
+// constants for PPM driver
+#define ACCEL_STEPS 200       // Number of steps to accelerate/decelerate
+
 enum COMMANDS {
     CMD_SETUP_STEPPER,
     CMD_SET_ORIGIN,
@@ -33,6 +39,8 @@ enum FSM_STATES {
     STATE_MOVE_BOX,
     STATE_RELEASE,
     STATE_DEBUG,
+
+    STATE_STEPPER_SPEED_TEST
 };
 
 const int ledArray[6] = {LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN, LED5_PIN, LED6_PIN};

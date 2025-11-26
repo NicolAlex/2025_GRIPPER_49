@@ -5,13 +5,18 @@ class Gripper {
 public:
     Gripper();
     //~Gripper();
+
+    void fsm_loop();
     
     void stepperUpdate();
+
+    void PPM_computer();
 
     void stepperSetDir(int direction, int runSpeed, int microSteps);
 
     bool setupGripper();
 
+    void setState(int newState);
     void setPosition(int32_t newPos);
     void setSpeed(int newSpeed);
     void setMicroSteppingMode(int newMicroSteps);
@@ -36,6 +41,8 @@ private:
     inline void setMicroSteps();
     void stepperMoveSteps(int steps, int runSpeed);
 
+    int fsmState;
+
     bool MS1state; // Default microstepping state for MS1
     bool MS2state; // Default microstepping state for MS2
     bool enabled;
@@ -46,38 +53,6 @@ private:
     int lastStep;
     int step;
 
-
-};
-
-
-class controller {
-public:
-    controller();
-    //~controller();
-
-    void PID_computer();
-
-    void setPressureSetpoint(float setpoint);
-    void readPressure();
-
-    float getOuputSpeed();
-    float getPressure();
-    float getPressureSetpoint();
-
-private:
-    const float KP;
-    const float KI;
-    const float KD;
-
-    float pressure;
-    float pressureSetpoint;
-    float error;
-    float lastError;
-    float integral;
-    float derivative;
-
-    float analogOutput;
-    int outputSpeed;
 
 };
 

@@ -19,6 +19,10 @@ void setup() {
     pinMode(MS2_PIN, OUTPUT);
     pinMode(2, OUTPUT);
     digitalWrite(2, HIGH);
+
+    pinMode(ENABLE_PIN, OUTPUT);
+    pinMode(DIR_PIN, OUTPUT);
+    pinMode(STEP_PIN, OUTPUT);
     // testStepper.attach(STEP_PIN, DIR_PIN);
     // delay(100);
     // int initialSteps = testStepper.readSteps();
@@ -40,6 +44,8 @@ void setup() {
     digitalWrite(LED5_PIN, LOW);
     digitalWrite(LED6_PIN, LOW);
     digitalWrite(BUZZER_PIN, LOW);
+
+    gripper.setState(STATE_STEPPER_SPEED_TEST);
 }
 
 
@@ -49,33 +55,36 @@ void loop() {
     cmd = getCommand();
     debugCommandHandler(cmd, &gripper);
 
-        gripper.stepperUpdate();
+    //gripper.fsm_loop();
 
-        static uint lastTime = millis();
+    gripper.PPM_computer();
+    gripper.stepperUpdate();
 
-        if (millis() - lastTime >= 100) {
-            lastTime = millis();
-            Serial.print("Position: ");
-            Serial.println(gripper.getPosition());
-            Serial.print("Step Count: ");
-            Serial.println(gripper.getStepCount());
-            Serial.println("----");
-        }
+    static uint lastTime = millis();
 
-        static int diff = 0;
-        static int lastDiff = 0;
-        if (diff != 0) {
-            statusLedBlinking(true);
-        }
-        else {
-            statusLedBlinking(false);
-        }
-        diff = gripper.getFinalPosition() - gripper.getPosition();
-        if (diff == 0 && lastDiff != 0) {
-            buzzerBeep(50, true); // Start beep
-        }
-        buzzerBeep(50, false); // Check and stop beep if duration elapsed
-        lastDiff = diff;
+    if (millis() - lastTime >= 100) {
+        lastTime = millis();
+        Serial.print("Position: ");
+        Serial.println(gripper.getPosition());
+        Serial.print("Step Count: ");
+        Serial.println(gripper.getStepCount());
+        Serial.println("----");
+    }
+
+    static int diff = 0;
+    static int lastDiff = 0;
+    if (diff != 0) {
+        statusLedBlinking(true);
+    }
+    else {
+        statusLedBlinking(false);
+    }
+    diff = gripper.getFinalPosition() - gripper.getPosition();
+    if (diff == 0 && lastDiff != 0) {
+        buzzerBeep(50, true); // Start beep
+    }
+    buzzerBeep(50, false); // Check and stop beep if duration elapsed
+    lastDiff = diff;
 
 
 

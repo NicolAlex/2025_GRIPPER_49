@@ -5,8 +5,10 @@
 MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
 
+//================================================================================================================
+// Constructor: Initialize gripper with default values
+//================================================================================================================
 Gripper::Gripper() {
-    // Constructor
     MS1state = LOW; // Default microstepping state for MS1
     MS2state = LOW; // Default microstepping state for MS2
     enabled = false;
@@ -18,10 +20,57 @@ Gripper::Gripper() {
     step = 0;
 }
 
+
+//================================================================================================================
+// FSM loop: Handles state machine transitions and state-specific behaviors
+//================================================================================================================
+void Gripper::fsm_loop() {
+    switch (fsmState) {
+        case STATE_IDLE:
+            finalPos = pos; // Hold position
+            stepperDisable();
+            break;
+
+        case STATE_STEPPER_SPEED_TEST:
+            // Non-blocking speed test: ramps speed up to MAX, holds 3s, then ramps down
+            static int testLastTime = 0;
+            static bool increasing = true;
+            if (millis() - testLastTime >= 100) { // every 100 ms
+                if (increasing) {
+                    speed += (int)(MAX_STEPPER_SPEED / 100); // increase speed
+                    if (speed >= MAX_STEPPER_SPEED) {
+                        speed = MAX_STEPPER_SPEED;
+                        increasing = false;
+                        testLastTime = millis() + 3000; // hold for 3 seconds
+                    }
+                } else {
+                    speed -= (int)(MAX_STEPPER_SPEED / 100); // decrease speed
+                    if (speed <= 0) {
+                        speed = 0;
+                        increasing = true;
+                        testLastTime = millis() + 3000; // hold for 3 seconds
+                    }
+                }
+                stepperSetDir(1, speed, microSteppingMode);
+                testLastTime = millis();
+            }
+            break;
+
+        default:
+            // Handle unknown state
+            break;
+    }
+}
+
+//================================================================================================================
+// Updates stepper position and executes movement commands
+// Called every loop iteration to sync logical position with hardware and drive motor
 //================================================================================================================
 void Gripper::stepperUpdate() {
-    // enabling/disabling
     digitalWrite(ENABLE_PIN, enabled ? LOW : HIGH); // Assuming active LOW
+    if (!enabled) {
+        return; // Stepper is disabled, do nothing
+    }
     static int stepIncrement = 0; // persistent variable to hold required step delta
     setMicroSteps(); // apply current micro-stepping pin configuration
     step = gripperStepper.readSteps(); // read absolute step count from the stepper driver
@@ -37,11 +86,60 @@ void Gripper::stepperUpdate() {
 }
 
 //================================================================================================================
+// Trapezoidal motion profile computer: calculates target speed based on distance to goal
+// Provides smooth acceleration, constant cruise speed, and deceleration ramps
+//================================================================================================================
+void Gripper::PPM_computer() {
+    int32_t distanceToTarget = finalPos - pos;
+    int32_t absDistance = abs(distanceToTarget);
+    
+    if (absDistance == 0) {
+        speed = 0;
+        return;
+    }
+    
+    // Motion profile parameters
+    const int MIN_SPEED = 20;          // Minimum speed to avoid motor stalling
+    const int CRUISE_SPEED = MAX_STEPPER_SPEED;
+    const int ACCEL_INCREMENT = 5;     // Speed increment per update for smooth acceleration
+    
+    int targetSpeed = 0;
+    
+    if (absDistance > 2 * ACCEL_STEPS) {
+        // Acceleration phase: gradually increase speed
+        targetSpeed = min(CRUISE_SPEED, speed + ACCEL_INCREMENT);
+    } else {
+        // Transition or deceleration zone
+        int halfDistance = absDistance / 2;
+        if (absDistance > halfDistance) {
+            targetSpeed = map(halfDistance, 0, ACCEL_STEPS, MIN_SPEED, CRUISE_SPEED);
+        } else {
+            targetSpeed = map(absDistance, 0, halfDistance, MIN_SPEED, CRUISE_SPEED);
+        }
+    }
+    
+    if (absDistance <= ACCEL_STEPS) {
+        // Deceleration phase: slow down as approaching target
+        int decelerationSpeed = map(absDistance, 0, ACCEL_STEPS, MIN_SPEED, CRUISE_SPEED);
+        targetSpeed = min(targetSpeed, decelerationSpeed);
+    }
+    
+    targetSpeed = constrain(targetSpeed, MIN_SPEED, CRUISE_SPEED);
+    speed = targetSpeed;
+}
+
+//================================================================================================================
+// Commands the stepper motor to move a specific number of steps at given speed
+// Converts logical steps to hardware steps based on microstepping mode
+//================================================================================================================
 void Gripper::stepperMoveSteps(int steps, int runSpeed) {
     gripperStepper.setSpeed(runSpeed * microSteppingMode);
     gripperStepper.doSteps(steps * microSteppingMode);
 }
 
+//================================================================================================================
+// Sets continuous rotation direction and speed for the stepper motor
+// Direction: 0=stop, >0=forward, <0=backward. Updates finalPos for continuous motion.
 //================================================================================================================
 void Gripper::stepperSetDir(int direction, int runSpeed, int microSteps) {
     speed = runSpeed;
@@ -49,24 +147,29 @@ void Gripper::stepperSetDir(int direction, int runSpeed, int microSteps) {
     if (direction == 0) {
         finalPos = 0;
     } else if (direction > 0) {
-        finalPos = MAX_STEP_DIR;
+        finalPos = pos + MAX_STEP_DIR;
     } else if (direction < 0) {
-        finalPos = -MAX_STEP_DIR;
+        finalPos = pos - MAX_STEP_DIR;
     }
 }
 
 //================================================================================================================
+// Enables the stepper motor driver (pulls ENABLE pin LOW for A4988/DRV8825)
+//================================================================================================================
 void Gripper::stepperEnable() {
-    //digitalWrite(ENABLE_PIN, LOW); // Assuming active LOW
     enabled = true;
 }
 
 //================================================================================================================
+// Disables the stepper motor driver to save power and prevent holding torque
+//================================================================================================================
 void Gripper::stepperDisable() {
-    //digitalWrite(ENABLE_PIN, HIGH); // Assuming active LOW
     enabled = false;
 }
 
+//================================================================================================================
+// Initializes the gripper hardware: attaches stepper motor pins and reads initial position
+// Returns true if setup successful, false otherwise
 //================================================================================================================
 bool Gripper::setupGripper() {
     uint8_t attachResult = gripperStepper.attach(STEP_PIN, DIR_PIN);
@@ -79,6 +182,17 @@ bool Gripper::setupGripper() {
     return true;
 }
 
+//================================================================================================================
+// Sets the current FSM state for the gripper
+//================================================================================================================
+void Gripper::setState(int newState) {
+    fsmState = newState;
+}
+
+//================================================================================================================
+// Interactive calibration: waits for user to manually close gripper, then sets position to zero
+// Blocks until user confirms via Serial input
+//================================================================================================================
 void Gripper::stepperSetOrigin() {
     stepperDisable();
     sendMessage("Close gripper to set origin and enter \"ok\".");
@@ -88,7 +202,6 @@ void Gripper::stepperSetOrigin() {
             delay(10);
         }
         char* msg = readMessage();
-        // Process both nullptr and empty string as valid ENTER key press
         if (msg != nullptr && strcmp(msg, "ok") == 0) {
             pos = 0;
             finalPos = 0;
@@ -99,6 +212,9 @@ void Gripper::stepperSetOrigin() {
     }
 }
 
+//================================================================================================================
+// Configures MS1 and MS2 pins to set microstepping resolution (2, 4, 8, or 16)
+// Inline for performance in stepperUpdate loop
 //================================================================================================================
 inline void Gripper::setMicroSteps() {
     static bool MS1state = LOW;
@@ -130,40 +246,57 @@ inline void Gripper::setMicroSteps() {
 }
 
 //================================================================================================================
+// Returns current logical position in user-defined steps
+//================================================================================================================
 int32_t Gripper::getPosition() {
     return pos;
 }
 
+//================================================================================================================
+// Returns target position the gripper is moving towards
 //================================================================================================================
 int32_t Gripper::getFinalPosition() {
     return finalPos;
 }
 
 //================================================================================================================
+// Returns raw hardware step count from the stepper driver
+//================================================================================================================
 int32_t Gripper::getStepCount() {
     return step;
 }
 
+//================================================================================================================
+// Returns current microstepping mode (2, 4, 8, or 16)
 //================================================================================================================
 int32_t Gripper::getMicroSteppingMode() {
     return microSteppingMode;
 }
 
 //================================================================================================================
+// Sets new target position for the gripper to move to
+//================================================================================================================
 void Gripper::setPosition(int32_t newPos) {
     finalPos = newPos;
 }
 
+//================================================================================================================
+// Manually sets the motor speed (useful for testing or override)
 //================================================================================================================
 void Gripper::setSpeed(int newSpeed) {
     speed = newSpeed;
 }
 
 //================================================================================================================
+// Updates microstepping resolution (2, 4, 8, or 16 microsteps per full step)
+//================================================================================================================
 void Gripper::setMicroSteppingMode(int newMicroSteps) {
     microSteppingMode = newMicroSteps;
 }
 
+//================================================================================================================
+// Converts gripper finger length to motor rotation angle via linear interpolation
+// Uses lookup table interpolSample for non-linear kinematics
 //================================================================================================================
 float Gripper::interpolToAngle(float length) {
     static float ratio = 0.0;
@@ -179,10 +312,12 @@ float Gripper::interpolToAngle(float length) {
             return interpolSample[i][1] + ratio * (interpolSample[i + 1][1] - interpolSample[i][1]);
         }
     }
-    // Fallback: return the last sample's angle to ensure a value is always returned
     return interpolSample[INTERPOL_SAMPLES - 1][1];
 }
 
+//================================================================================================================
+// Converts motor rotation angle to gripper finger length via linear interpolation
+// Inverse of interpolToAngle for kinematic feedback
 //================================================================================================================
 float Gripper::interpolToLength(float angle) {
     static float ratio = 0.0;
@@ -198,25 +333,13 @@ float Gripper::interpolToLength(float angle) {
             return interpolSample[i][0] + ratio * (interpolSample[i + 1][0] - interpolSample[i][0]);
         }
     }
-    // Fallback: return the last sample's length to ensure a value is always returned
     return interpolSample[INTERPOL_SAMPLES - 1][0];
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//================================================================================================================
+// Debug command dispatcher: processes serial commands to control gripper during testing
+// Handles setup, calibration, movement, and configuration commands
+//================================================================================================================
 void debugCommandHandler(int cmd, Gripper* gripper) {
     if (cmd != -1 && gripper != nullptr) {
         switch (cmd) {
@@ -284,17 +407,6 @@ void debugCommandHandler(int cmd, Gripper* gripper) {
                         Serial.println(gripper->getPosition());
                     }
                 }
-                sendMessage("Enter rotation speed:");
-                while(!Serial.available()) {
-                    delay(10);
-                }
-                {
-                    char* msg = readMessage();
-                    if (msg != nullptr) {
-                        int newSpeed = atoi(msg);
-                        gripper->setSpeed(newSpeed);
-                    }
-                }
                 break;
 
             case CMD_ROTATE:
@@ -310,10 +422,17 @@ void debugCommandHandler(int cmd, Gripper* gripper) {
     }
 }
 
+//================================================================================================================
+// Sends a message string over Serial for debugging/user feedback
+//================================================================================================================
 void sendMessage(const char* msg) {
     Serial.println(msg);
 }
 
+//================================================================================================================
+// Reads a line of text from Serial input, handling CR/LF properly
+// Returns nullptr if no data available, empty string for ENTER key, or message text
+//================================================================================================================
 char* readMessage() {
     static char buffer[100];
     if (!Serial.available()) {
@@ -323,7 +442,6 @@ char* readMessage() {
     // If the next byte(s) are only CR/LF (ENTER), consume them and return an empty string
     int peeked = Serial.peek();
     if (peeked == '\n' || peeked == '\r') {
-        // consume all leading CR/LF characters
         while (Serial.available() && (Serial.peek() == '\n' || Serial.peek() == '\r')) {
             Serial.read();
         }
@@ -333,7 +451,6 @@ char* readMessage() {
 
     // Read a line up to '\n'
     size_t len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-    // strip trailing CR if present (handles CR+LF)
     if (len > 0 && buffer[len - 1] == '\r') {
         len--;
     }
@@ -341,6 +458,10 @@ char* readMessage() {
     return buffer;
 }
 
+//================================================================================================================
+// Parses Serial input string and returns corresponding command code
+// Returns -1 if no command or unknown command
+//================================================================================================================
 int getCommand() {
     char* msg = readMessage();
     if (msg == nullptr) {
@@ -366,16 +487,15 @@ int getCommand() {
     return -1; // Unknown command
 }
 
-
-
-
-
-
+//================================================================================================================
+// Animates status LEDs in a rotating pattern when enabled
+// Shows first LED solid when disabled (idle state indicator)
+//================================================================================================================
 void statusLedBlinking(bool enabled) {
     static unsigned long lastTime = 0;
     static int ledIndex = 0;
     if (enabled) {
-        if (millis() - lastTime >= 50) { // Blink every 25 ms
+        if (millis() - lastTime >= 50) { // Blink every 50 ms
             // Turn off all LEDs
             for (int i = 0; i < 4; i++) {
                 digitalWrite(ledArray[i], LOW);
@@ -387,7 +507,6 @@ void statusLedBlinking(bool enabled) {
             lastTime = millis();
         }
     }
-
     else {
         digitalWrite(LED1_PIN, HIGH);
         digitalWrite(LED2_PIN, LOW);
@@ -396,7 +515,11 @@ void statusLedBlinking(bool enabled) {
     }
 }
 
-void buzzerBeep(int duration, bool setup) { // if setup is true, start the beep, if false, stop after duration
+//================================================================================================================
+// Controls buzzer with timed beep: setup=true starts beep, false checks/stops after duration
+// Non-blocking implementation for integration in main loop
+//================================================================================================================
+void buzzerBeep(int duration, bool setup) {
     static unsigned long beepStartTime = 0;
     static bool isBeeping = false;
 
