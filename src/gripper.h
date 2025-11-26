@@ -34,9 +34,6 @@ public:
 
     float readPressure();
 
-    float interpolToAngle(float length);
-    float interpolToLength(float angle);
-
 private:
     inline void setMicroSteps();
     void stepperMoveSteps(int steps, int runSpeed);
@@ -56,6 +53,8 @@ private:
 
 };
 
+float InterpolToAngle(float length);
+float InterpolToLength(float angle);
 
 void debugCommandHandler(int cmd, Gripper* gripper);
 void sendMessage(const char* msg);

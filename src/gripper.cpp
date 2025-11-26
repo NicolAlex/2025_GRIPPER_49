@@ -298,7 +298,7 @@ void Gripper::setMicroSteppingMode(int newMicroSteps) {
 // Converts gripper finger length to motor rotation angle via linear interpolation
 // Uses lookup table interpolSample for non-linear kinematics
 //================================================================================================================
-float Gripper::interpolToAngle(float length) {
+float InterpolToAngle(float length) {
     static float ratio = 0.0;
     if (length <= interpolSample[0][0]) {
         return interpolSample[0][1];
@@ -319,7 +319,7 @@ float Gripper::interpolToAngle(float length) {
 // Converts motor rotation angle to gripper finger length via linear interpolation
 // Inverse of interpolToAngle for kinematic feedback
 //================================================================================================================
-float Gripper::interpolToLength(float angle) {
+float InterpolToLength(float angle) {
     static float ratio = 0.0;
     if (angle <= interpolSample[0][1]) {
         return interpolSample[0][0];

@@ -6,20 +6,24 @@ public:
     //~controller();
 
     void PID_computer();
+    
+    int convertToSteps();
+
+    bool checkSteadyState();
 
     void setPressureSetpoint(float setpoint);
     void readPressure();
 
-    float getOuputSpeed();
+    float getOuputOpening();
     float getPressure();
-    float getPressureSetpoint();
+    float getSetpoint();
 
 private:
     const float KP = 0.0;
     const float KI = 0.0;
     const float KD = 0.0;
 
-    const float speedFactor = 1.0;
+    const float factor = 1.0;
 
     float pressure;
     float pressureSetpoint;
@@ -30,6 +34,6 @@ private:
 
     float pidOutput;
     float analogOutput;
-    int outputSpeed;
+    int outputOpening;
 
 };

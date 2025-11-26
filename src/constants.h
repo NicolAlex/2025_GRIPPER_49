@@ -18,6 +18,11 @@
 // constants for PPM driver
 #define ACCEL_STEPS 200       // Number of steps to accelerate/decelerate
 
+// constants for PID controller
+#define MAX_OPENING 100       // Maximum opening distance in mm
+#define ERROR_THRESHOLD 0.5   // Threshold for steady state detection
+#define AVERAGE_TIME_INTERVAL 100 // Time interval for averaging error in ms
+
 enum COMMANDS {
     CMD_SETUP_STEPPER,
     CMD_SET_ORIGIN,
