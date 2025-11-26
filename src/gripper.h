@@ -27,8 +27,12 @@ public:
     void stepperEnable();
     void stepperDisable();
 
+<<<<<<< Updated upstream
     float interpolToAngle(float length);
     float interpolToLength(float angle);
+=======
+    float readPressure();
+>>>>>>> Stashed changes
 
 private:
 inline void setMicroSteps();
@@ -47,6 +51,8 @@ int step;
 
 };
 
+float InterpolToAngle(float length);
+float InterpolToLength(float angle);
 
 
 void sendMessage(const char* msg);
