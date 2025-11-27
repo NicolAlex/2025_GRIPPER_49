@@ -27,12 +27,15 @@ public:
     int getSpeed();
     int32_t getFinalPosition();
 
+    void getFruitSize();
+
     void stepperSetOrigin();
 
     void stepperEnable();
     void stepperDisable();
 
-    float readPressure();
+    void servoSetup();
+    bool servoRotate();
 
 private:
     inline void setMicroSteps();
@@ -49,6 +52,8 @@ private:
     int finalPos;
     int lastStep;
     int step;
+
+    int fruitSize;
 
 
 };

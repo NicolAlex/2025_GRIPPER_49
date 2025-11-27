@@ -46,6 +46,7 @@ void setup() {
     digitalWrite(BUZZER_PIN, LOW);
 
     gripper.setState(STATE_STEPPER_SPEED_TEST);
+    gripper.setSpeed(0);
 }
 
 
@@ -68,6 +69,8 @@ void loop() {
         Serial.println(gripper.getPosition());
         Serial.print("Step Count: ");
         Serial.println(gripper.getStepCount());
+        Serial.print("current Speed: ");
+        Serial.println(gripper.getSpeed());
         Serial.println("----");
     }
 

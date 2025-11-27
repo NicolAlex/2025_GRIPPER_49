@@ -14,7 +14,7 @@ controller::controller() {
 
     pidOutput = 0.0;
     analogOutput = 0.0;
-    outputOpening = 0;
+    outputSpeed = 0;
 }
 
 void controller::PID_computer() {
@@ -24,38 +24,28 @@ void controller::PID_computer() {
     // Calculate error
     error = pressureSetpoint - pressure;
 
-    // Proportional term
-    float Pout = KP * error;
-
     // Integral term
     integral += error;
-    float Iout = KI * integral;
 
     // Derivative term
     derivative = error - lastError;
-    float Dout = KD * derivative;
 
     // Total PID output
-    pidOutput = Pout + Iout + Dout;
+    pidOutput = (KP * error) + (KI * integral) + (KD * derivative);
 
     // Save error for next iteration
     lastError = error;
 
     // Convert PID output to analog output and position
-    analogOutput = pidOutput * factor;
+    analogOutput = pidOutput * speedFactor;
 
-    if (analogOutput > MAX_OPENING) {
-        analogOutput = MAX_OPENING;
+    if (analogOutput > MAX_STEPPER_SPEED) {
+        analogOutput = MAX_STEPPER_SPEED;
     } else if (analogOutput < 0) {
         analogOutput = 0;
     }
 
-    outputOpening = static_cast<int>(analogOutput);
-}
-
-
-int controller::convertToSteps() {
-    return static_cast<int>(InterpolToAngle(outputOpening));
+    outputSpeed = static_cast<int>(analogOutput);
 }
 
 bool controller::checkSteadyState() {
@@ -89,4 +79,10 @@ bool controller::checkSteadyState() {
 
 void controller::setPressureSetpoint(float setpoint) {
     pressureSetpoint = setpoint;
+}
+
+void controller::readPressure() {
+    static float analogOutput = 0.0;
+    analogOutput = analogRead(PRESSURE_SENSOR_PIN);
+    pressure = (analogOutput / 4095.0f) * 100.0f; // Example conversion to pressure in kPa
 }

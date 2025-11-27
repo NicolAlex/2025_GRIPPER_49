@@ -85,6 +85,8 @@ void Gripper::stepperUpdate() {
     }
 }
 
+
+
 //================================================================================================================
 // Trapezoidal motion profile computer: calculates target speed based on distance to goal
 // Provides smooth acceleration, constant cruise speed, and deceleration ramps
@@ -128,6 +130,7 @@ void Gripper::PPM_computer() {
     speed = targetSpeed;
 }
 
+
 //================================================================================================================
 // Commands the stepper motor to move a specific number of steps at given speed
 // Converts logical steps to hardware steps based on microstepping mode
@@ -154,7 +157,7 @@ void Gripper::stepperSetDir(int direction, int runSpeed, int microSteps) {
 }
 
 //================================================================================================================
-// Enables the stepper motor driver (pulls ENABLE pin LOW for A4988/DRV8825)
+// Enables the stepper motor driver
 //================================================================================================================
 void Gripper::stepperEnable() {
     enabled = true;
@@ -209,6 +212,19 @@ void Gripper::stepperSetOrigin() {
             stepperEnable();
             return;
         }
+    }
+}
+
+//================================================================================================================
+// Measures fruit size based on current gripper position
+//================================================================================================================
+void Gripper::getFruitSize() {
+    static float openingLength = 0.0f;
+    openingLength = InterpolToLength(static_cast<float>(pos));
+    if (openingLength < FRUIT_SIZE_THRESHOLD) {
+        fruitSize = FRUIT_SMALL; // Small fruit
+    } else {
+        fruitSize = FRUIT_LARGE; // Large fruit
     }
 }
 
@@ -274,6 +290,13 @@ int32_t Gripper::getMicroSteppingMode() {
 }
 
 //================================================================================================================
+// Returns current motor speed in steps per minute
+//================================================================================================================
+int Gripper::getSpeed() {
+    return speed;
+}
+
+//================================================================================================================
 // Sets new target position for the gripper to move to
 //================================================================================================================
 void Gripper::setPosition(int32_t newPos) {
@@ -292,6 +315,19 @@ void Gripper::setSpeed(int newSpeed) {
 //================================================================================================================
 void Gripper::setMicroSteppingMode(int newMicroSteps) {
     microSteppingMode = newMicroSteps;
+}
+
+//================================================================================================================
+// Prepares servo motor for operation (attach to pin, set initial position)
+//================================================================================================================
+void Gripper::servoSetup() {
+    // Placeholder for servo setup code
+}
+
+
+//================================================================================================================
+bool Gripper::servoRotate() {
+    return true;
 }
 
 //================================================================================================================
