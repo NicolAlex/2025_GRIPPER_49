@@ -4,6 +4,13 @@
 
 MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
+// convertion functions def
+static inline float rpmToStepsPerSec(int rpm);
+static inline float rpmToStepsPerSec(int rpm);
+
+static inline float rpmToStepsPerSec(int rpm);
+static inline int stepsPerSecToRpm(float stepsPerSec);
+
 
 //================================================================================================================
 // Constructor: Initialize gripper with default values
@@ -85,49 +92,105 @@ void Gripper::stepperUpdate() {
     }
 }
 
-
-
 //================================================================================================================
 // Trapezoidal motion profile computer: calculates target speed based on distance to goal
 // Provides smooth acceleration, constant cruise speed, and deceleration ramps
 //================================================================================================================
 void Gripper::PPM_computer() {
-    int32_t distanceToTarget = finalPos - pos;
-    int32_t absDistance = abs(distanceToTarget);
-    
-    if (absDistance == 0) {
+    // Early exit if on target
+    if (finalPos == pos) {
         speed = 0;
         return;
     }
-    
-    // Motion profile parameters
-    const int MIN_SPEED = 20;          // Minimum speed to avoid motor stalling
-    const int CRUISE_SPEED = MAX_STEPPER_SPEED;
-    const int ACCEL_INCREMENT = 5;     // Speed increment per update for smooth acceleration
-    
-    int targetSpeed = 0;
-    
-    if (absDistance > 2 * ACCEL_STEPS) {
-        // Acceleration phase: gradually increase speed
-        targetSpeed = min(CRUISE_SPEED, speed + ACCEL_INCREMENT);
-    } else {
-        // Transition or deceleration zone
-        int halfDistance = absDistance / 2;
-        if (absDistance > halfDistance) {
-            targetSpeed = map(halfDistance, 0, ACCEL_STEPS, MIN_SPEED, CRUISE_SPEED);
+
+    // Constants in steps/sec
+    const float vmax_stepsSec = rpmToStepsPerSec(MAX_STEPPER_SPEED);
+    const float vmin_stepsSec = rpmToStepsPerSec(MIN_RUN_SPEED);
+    const float a = static_cast<float>(ACCELERATION); // steps/sec^2 (ensure ACCELERATION matches this)
+
+    // Persistent profile state
+    static int32_t lastTarget = 0;
+    static float v_start = 0.0f;
+    static float v_peak = 0.0f;
+    static uint32_t tAccel_ms = 0;
+    static uint32_t tCruise_ms = 0;
+    static uint32_t tDecel_ms = 0;
+    static uint32_t profileStart_ms = 0;
+
+    // Time tracking
+    uint32_t now_ms = millis();
+    uint32_t tSinceStart_ms = now_ms - profileStart_ms;
+
+    // Start new profile if target changed
+    if (finalPos != lastTarget) {
+        int32_t dist_steps = abs(finalPos - pos); // full steps
+        v_start = rpmToStepsPerSec(speed);        // current speed in steps/sec
+
+        // Distance needed for full accel + decel (from vStart to vmax then to 0)
+        float dNeeded = ((vmax_stepsSec * vmax_stepsSec - v_start * v_start) / (2.0f * a)) +
+                        ((vmax_stepsSec * vmax_stepsSec) / (2.0f * a));
+
+        if (dist_steps < dNeeded) {
+            // Triangular profile: solve peak speed
+            // dist = (Vp^2 - vStart^2)/(2a) + (Vp^2)/(2a) => Vp^2 = a*dist + 0.5*vStart^2
+            v_peak = sqrtf(a * dist_steps + 0.5f * v_start * v_start);
+            if (v_peak < v_start) {
+                // Only decelerate if already above achievable peak
+                v_peak = v_start;
+                tAccel_ms = 0;
+                tDecel_ms = (uint32_t)(v_peak / a * 1000.0f);
+                tCruise_ms = 0;
+            } else {
+                tAccel_ms = (uint32_t)(((v_peak - v_start) / a) * 1000.0f);
+                tDecel_ms = (uint32_t)((v_peak / a) * 1000.0f);
+                tCruise_ms = 0;
+            }
         } else {
-            targetSpeed = map(absDistance, 0, halfDistance, MIN_SPEED, CRUISE_SPEED);
+            // Trapezoidal profile
+            v_peak = vmax_stepsSec;
+            tAccel_ms = (uint32_t)(((v_peak - v_start) / a) * 1000.0f);
+            tDecel_ms = (uint32_t)((v_peak / a) * 1000.0f);
+
+            // Distance used in accel + decel
+            float dAccel = (v_peak * v_peak - v_start * v_start) / (2.0f * a);
+            float dDecel = (v_peak * v_peak) / (2.0f * a);
+            float dCruise = dist_steps - dAccel - dDecel;
+            if (dCruise < 0) dCruise = 0;
+            tCruise_ms = (uint32_t)((dCruise / v_peak) * 1000.0f);
         }
+
+        profileStart_ms = now_ms;
+        tSinceStart_ms = 0;
+        lastTarget = finalPos;
     }
-    
-    if (absDistance <= ACCEL_STEPS) {
-        // Deceleration phase: slow down as approaching target
-        int decelerationSpeed = map(absDistance, 0, ACCEL_STEPS, MIN_SPEED, CRUISE_SPEED);
-        targetSpeed = min(targetSpeed, decelerationSpeed);
+
+    // Compute instantaneous speed (steps/sec)
+    float vCurrent;
+    uint32_t tTotal_ms = tAccel_ms + tCruise_ms + tDecel_ms;
+
+    if (tSinceStart_ms >= tTotal_ms) {
+        vCurrent = 0.0f;
+    } else if (tSinceStart_ms >= (tAccel_ms + tCruise_ms)) {
+        // Decel phase
+        uint32_t tIntoDecel = tSinceStart_ms - (tAccel_ms + tCruise_ms);
+        vCurrent = v_peak - a * (tIntoDecel / 1000.0f);
+        if (vCurrent < 0) vCurrent = 0;
+    } else if (tSinceStart_ms >= tAccel_ms) {
+        // Cruise
+        vCurrent = v_peak;
+    } else {
+        // Accel
+        vCurrent = v_start + a * (tSinceStart_ms / 1000.0f);
+        if (vCurrent > v_peak) vCurrent = v_peak;
     }
-    
-    targetSpeed = constrain(targetSpeed, MIN_SPEED, CRUISE_SPEED);
-    speed = targetSpeed;
+
+    // Enforce min speed (except when near stop)
+    if (vCurrent > 0 && vCurrent < vmin_stepsSec) {
+        vCurrent = vmin_stepsSec;
+    }
+
+    // Update rpm-facing member
+    speed = stepsPerSecToRpm(vCurrent);
 }
 
 
@@ -136,7 +199,7 @@ void Gripper::PPM_computer() {
 // Converts logical steps to hardware steps based on microstepping mode
 //================================================================================================================
 void Gripper::stepperMoveSteps(int steps, int runSpeed) {
-    gripperStepper.setSpeed(runSpeed * microSteppingMode);
+    gripperStepper.setSpeed(runSpeed * microSteppingMode * 10);
     gripperStepper.doSteps(steps * microSteppingMode);
 }
 
@@ -578,4 +641,12 @@ void buzzerBeep(int duration, bool setup) {
             isBeeping = false;
         }
     }
+}
+
+// Helper conversions (keep near top of file or before class methods)
+static inline float rpmToStepsPerSec(int rpm) {
+    return (rpm * 200.0f) / 60.0f; // full steps/sec (microstepping excluded intentionally)
+}
+static inline int stepsPerSecToRpm(float sps) {
+    return (int) ((sps * 60.0f) / 200.0f);
 }

@@ -14,10 +14,11 @@
 #define SERVO_PIN 4
 
 // Absolute maximum stepper speed and acceleration
-#define MAX_STEPPER_SPEED 4200 // steps/min * 10
+#define MAX_STEPPER_SPEED 420 // rotations/min (200 steps/rev -> 420*200=84000 steps/min)
 
 // constants for PPM driver
-#define ACCEL_STEPS 400      // Number of steps for acceleration/deceleration
+#define ACCELERATION 1000  // steps/sec^2
+#define MIN_RUN_SPEED 20  // rotations/min
 
 // constants for PID controller
 #define MAX_OPENING 100       // Maximum opening distance in mm
