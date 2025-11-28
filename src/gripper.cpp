@@ -24,7 +24,7 @@ Gripper::Gripper() {
     step = 0;
     fsmState = STATE_INIT;
     maxOpSpeed = MAX_STEPPER_SPEED;
-    minOpSpeed = 20;
+    minOpSpeed = 50;
     opAccel = 1000.0f; // steps/sec^2
     fruitSize = UNDEFINED_SIZE;
     verboseEnabled = false;
@@ -95,7 +95,7 @@ void Gripper::stepperUpdate() {
     if (!enabled) {
         return; // Stepper is disabled, do nothing
     }
-    static int stepIncrement = 0; // persistent variable to hold required step delta
+    static float stepIncrement = 0.0f; // changed to float for fractional steps
     // Protect gripper from exceding mechanical limits
     if (finalPos > MAX_POSITION) {
         finalPos = MAX_POSITION;
@@ -104,14 +104,18 @@ void Gripper::stepperUpdate() {
     }
     setMicroSteps(); // apply current micro-stepping pin configuration
     step = gripperStepper.readSteps(); // read absolute step count from the stepper driver
-    // update logical position (convert hardware steps to user steps by dividing out micro-stepping)
-    pos += (int)((step - lastStep) / microSteppingMode);
-    // align lastStep to the nearest micro-step boundary we've just consumed
-    lastStep = step - ((step - lastStep) % microSteppingMode);
+    
+    // Calculate fractional position change based on microsteps
+    float stepDelta = (float)(step - lastStep) / (float)microSteppingMode;
+    pos += stepDelta; // pos is now float, accumulates fractional steps
+    
+    // Update lastStep to current hardware position
+    lastStep = step;
+    
     stepIncrement = finalPos - pos; // compute how many user-steps remain to reach finalPos
-    if (stepIncrement != 0) {
+    if (abs(stepIncrement) > 0.001f) { // use small threshold instead of exact zero for floats
         // request the stepper to move the remaining steps at configured speed
-        stepperMoveSteps(stepIncrement, speed);
+        stepperMoveSteps((int)round(stepIncrement), speed);
     }
 }
 
@@ -120,8 +124,8 @@ void Gripper::stepperUpdate() {
 // Provides smooth acceleration, constant cruise speed, and deceleration ramps
 //================================================================================================================
 void Gripper::PPM_computer() {
-    // Early exit if on target
-    if (finalPos == pos) {
+    // Early exit if on target (use float comparison with tolerance)
+    if (fabsf(finalPos - pos) < 0.001f) {
         speed = 0;
         return;
     }
@@ -132,7 +136,7 @@ void Gripper::PPM_computer() {
     static float a = opAccel; // steps/sec^2 (ensure ACCELERATION matches this)
 
     // Persistent profile state
-    static int32_t lastTarget = 0;
+    static float lastTarget = 0;
     static float v_start = 0.0f;
     static float v_peak = 0.0f;
     static uint32_t tAccel_ms = 0;
@@ -144,15 +148,15 @@ void Gripper::PPM_computer() {
     uint32_t now_ms = millis();
     uint32_t tSinceStart_ms = now_ms - profileStart_ms;
 
-    // Start new profile if target changed
-    if (finalPos != lastTarget) {
+    // Start new profile if target changed (use float comparison)
+    if (fabsf(finalPos - lastTarget) > 0.001f) {
 
         // update profile parameters
         vmax_stepsSec = rpmToStepsPerSec(maxOpSpeed);
         vmin_stepsSec = rpmToStepsPerSec(minOpSpeed);
         a = opAccel; // steps/sec^2
 
-        int32_t dist_steps = abs(finalPos - pos); // full steps
+        float dist_steps = fabsf(finalPos - pos); // full steps (now supports fractional)
         v_start = rpmToStepsPerSec(speed);        // current speed in steps/sec
 
         // Distance needed for full accel + decel (from vStart to vmax then to 0)
@@ -242,9 +246,9 @@ void Gripper::stepperSetDir(int direction, int runSpeed, int microSteps) {
     if (direction == 0) {
         finalPos = 0;
     } else if (direction > 0) {
-        finalPos = pos + MAX_STEP_DIR;
+        finalPos = MAX_POSITION;
     } else if (direction < 0) {
-        finalPos = pos - MAX_STEP_DIR;
+        finalPos = MIN_POSITION;
     }
 }
 
@@ -411,24 +415,6 @@ void Gripper::setSpeed(int newSpeed) {
 void Gripper::setMicroSteppingMode(int newMicroSteps) {
     microSteppingMode = newMicroSteps;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 //================================================================================================================
 // Sets maximum operational speed for motion profiling

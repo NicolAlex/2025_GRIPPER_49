@@ -57,10 +57,10 @@ private:
     bool enabled;
     int microSteppingMode; // Default microstepping mode (2x)
     int speed;
-    int pos;
-    int finalPos;
-    int lastStep;
-    int step;
+    float pos;
+    float finalPos;
+    int32_t lastStep;
+    int32_t step;
 
     int maxOpSpeed;
     int minOpSpeed;
