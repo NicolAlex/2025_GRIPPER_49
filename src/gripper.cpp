@@ -439,13 +439,6 @@ void Gripper::setOpAccel(float accel) {
 }
 
 //================================================================================================================
-// enables or disables verbose debug output
-//================================================================================================================
-void Gripper::setVerbose(bool enabled) {
-    verboseEnabled = enabled;
-}
-
-//================================================================================================================
 // Prepares servo motor for operation (attach to pin, set initial position)
 //================================================================================================================
 void Gripper::servoSetup() {
@@ -460,13 +453,14 @@ bool Gripper::servoRotate() {
 
 void Gripper::verbose() {
     Serial.println("================================================");
-    Serial.print(" Position: ");
+    Serial.println("GRIPPER STATUS:");
+    Serial.print(">Position: ");
     Serial.println(pos);
-    Serial.print(" FinalPos: ");
+    Serial.print(">FinalPos: ");
     Serial.println(finalPos);
-    Serial.print(" Speed: ");
+    Serial.print(">Speed: ");
     Serial.println(speed);
-    Serial.print("FSM State: ");
+    Serial.print(">FSM State: ");
     if (fsmState == STATE_INIT) Serial.println("INIT");
     else if (fsmState == STATE_IDLE) Serial.println("IDLE");
     else if (fsmState == STATE_ARM) Serial.println("ARM");
@@ -483,72 +477,91 @@ void Gripper::verbose() {
 
 
 void commandHandler(Gripper* gripper) {
+
+    static const char* cmdStrings[] = {
+    "set",
+    "get",
+    "cal",
+    "arm",
+    "disarm",
+    "grip",
+    "release",
+    "sort",
+    "movebox",
+    "status",
+    "verbose",
+    "debug_stepper",
+    "debug_track_press",
+    "debug_servo",
+    "debug_print_press"
+    };
+
     static char cmd[32], arg1[32], arg2[32];
 
     if (readMessage(cmd, arg1, arg2)) {
         if (strcmp(cmd, cmdStrings[0]) == 0) { // set
             if (strlen(arg1) == 0) {
-                Serial.print("Error: Missing setting argument.");
+                Serial.println("Error: Missing setting argument.");
                 return;
             }
             if (strcmp(arg1, "fpos") == 0) { // set fpos
                 if (strlen(arg2) == 0) {
-                    Serial.print("Error: Missing position argument.");
+                    Serial.println("Error: Missing position argument.");
                     return;
                 }
                 int32_t newPos = atoi(arg2);
                 gripper->setPosition(newPos);
-                Serial.print("Final position set.");
+                Serial.println("Final position set.");
             }
             if (strcmp(arg1, "v") == 0) { // set v
                 if (strlen(arg2) == 0) {
-                    Serial.print("Error: Missing speed argument.");
+                    Serial.println("Error: Missing speed argument.");
                     return;
                 }
                 int newSpeed = atoi(arg2);
                 gripper->setSpeed(newSpeed);
-                Serial.print("Speed set.");
+                Serial.println("Speed set.");
             }
             if (strcmp(arg1, "ms") == 0) { // set ms
                 if (strlen(arg2) == 0) {
-                    Serial.print("Error: Missing microstepping argument.");
+                    Serial.println("Error: Missing microstepping argument.");
                     return;
                 }
                 int newMicroSteps = atoi(arg2);
                 gripper->setMicroSteppingMode(newMicroSteps);
-                Serial.print("Microstepping mode set.");
+                Serial.println("Microstepping mode set.");
             }
             if (strcmp(arg1, "vmax") == 0) { // set vmax
                 if (strlen(arg2) == 0) {
-                    Serial.print("Error: Missing max speed argument.");
+                    Serial.println("Error: Missing max speed argument.");
                     return;
                 }
                 int maxSpeed = atoi(arg2);
                 gripper->setMaxOpSpeed(maxSpeed);
-                Serial.print("Max operational speed set.");
+                Serial.println("Max operational speed set.");
             }
             if (strcmp(arg1, "vmin") == 0) { // set vmin
                 if (strlen(arg2) == 0) {
-                    Serial.print("Error: Missing min speed argument.");
+                    Serial.println("Error: Missing min speed argument.");
                     return;
                 }
                 int minSpeed = atoi(arg2);
                 gripper->setMinOpSpeed(minSpeed);
-                Serial.print("Min operational speed set.");
+                Serial.println("Min operational speed set.");
             }
             if (strcmp(arg1, "accel") == 0) { // set accel
                 if (strlen(arg2) == 0) {
-                    Serial.print("Error: Missing acceleration argument.");
+                    Serial.println("Error: Missing acceleration argument.");
                     return;
                 }
                 float accel = atof(arg2);
                 gripper->setOpAccel(accel);
-                Serial.print("Operational acceleration set.");
+                Serial.println("Operational acceleration set.");
             }
         }
         if (strcmp(cmd, cmdStrings[1]) == 0) { // get
             if (strlen(arg1) == 0) {
-                Serial.print("Error: Missing get argument.");
+                Serial.println("Error: Missing get argument.");
                 return;
             }
             if (strcmp(arg1, "pos") == 0) { // get pos
@@ -574,34 +587,34 @@ void commandHandler(Gripper* gripper) {
         }
         if (strcmp(cmd, cmdStrings[2]) == 0) { // cal
             gripper->stepperSetOrigin();
-            Serial.print("Command calibrate terminated.");
+            Serial.println("Command calibrate terminated.");
         }
         if (strcmp(cmd, cmdStrings[3]) == 0) { // arm
             if (gripper->getfsmState() != STATE_INIT) {
                 gripper->setState(STATE_ARM);
-                Serial.print("Gripper armed.");
+                Serial.println("Gripper armed.");
             }
         }
         if (strcmp(cmd, cmdStrings[4]) == 0) { // disarm
             gripper->setState(STATE_IDLE);
-            Serial.print("Gripper disarmed.");
+            Serial.println("Gripper disarmed.");
         }
         if (strcmp(cmd, cmdStrings[9]) == 0) { // status
             gripper->verbose();
         }
         if (strcmp(cmd, cmdStrings[10]) == 0) { // verbose
             if (strlen(arg1) == 0) {
-                Serial.print("Error: Missing verbose argument.");
+                Serial.println("Error: Missing verbose argument.");
                 return;
             }
             if (strcmp(arg1, "on") == 0) { // verbose on
-                gripper->setVerbose(true);
-                Serial.print("Verbose mode enabled.");
+                gripper->verboseEnabled = true;
+                Serial.println("Verbose mode enabled.");
             } else if (strcmp(arg1, "off") == 0) { // verbose off
-                gripper->setVerbose(false);
-                Serial.print("Verbose mode disabled.");
+                gripper->verboseEnabled = false;
+                Serial.println("Verbose mode disabled.");
             } else {
-                Serial.print("Error: Invalid verbose argument. Use 'on' or 'off'.");
+                Serial.println("Error: Invalid verbose argument. Use 'on' or 'off'.");
             }
         }
 

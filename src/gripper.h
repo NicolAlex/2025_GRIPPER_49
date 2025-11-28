@@ -23,7 +23,6 @@ public:
     void setMaxOpSpeed(int maxSpeed);
     void setMinOpSpeed(int minSpeed);
     void setOpAccel(float accel);
-    void setVerbose(bool enabled);
 
     int32_t getPosition();
     int32_t getStepCount();
@@ -43,6 +42,9 @@ public:
     bool servoRotate();
 
     void verbose();
+
+    // public variables
+    bool verboseEnabled;
 
 private:
     inline void setMicroSteps();
@@ -65,8 +67,6 @@ private:
     float opAccel;
 
     int fruitSize;
-
-    bool verboseEnabled;
 
 
 };

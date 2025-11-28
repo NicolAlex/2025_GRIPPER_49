@@ -34,21 +34,7 @@
 
 
 
-
-
-const char* cmdStrings[] = {
-    "set",
-    "get",
-    "cal",
-    "arm",
-    "disarm",
-    "grip",
-    "release",
-    "getsize",
-    "getpress",
-    "status",
-    "verbose",
-};
+//extern const char* cmdStrings[];  // Declaration only
 
 enum FSM_STATES {
     STATE_INIT,

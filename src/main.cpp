@@ -12,7 +12,6 @@ Gripper gripper;
 
 // MoToStepper testStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
 
-
 void setup() {
     Serial.begin(115200);
     pinMode(MS1_PIN, OUTPUT);
@@ -53,9 +52,31 @@ void setup() {
 
 
 void loop() {
+
+    commandHandler(&gripper);
     gripper.fsm_loop();
     gripper.stepperUpdate();
-    delay(10);
+
+    // compute loop frequency
+    static unsigned long lastLoopTime = 0;
+    static float loopFrequency = 0.0f;
+    static int loopCount = 0;
+    loopCount++;
+    if (millis() - lastLoopTime >= 1000) { // every second
+        loopFrequency = loopCount / ((millis() - lastLoopTime) / 1000.0f);
+        loopCount = 0;
+        lastLoopTime = millis();
+    }
+    
+    static unsigned long lastStatusTime = 0;
+    if (millis() - lastStatusTime >= 300 && gripper.verboseEnabled) { // every 0.1 second
+        lastStatusTime = millis();
+        gripper.verbose();
+        Serial.print("Loop Frequency: ");
+        Serial.println(loopFrequency);
+    }
+
+    delay(1);
 }
 
 
