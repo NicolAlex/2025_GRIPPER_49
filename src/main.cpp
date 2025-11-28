@@ -57,6 +57,10 @@ void loop() {
     gripper.fsm_loop();
     gripper.stepperUpdate();
 
+    gripController.readPressure();
+    static float pressure = 0.0f;
+    pressure = gripController.getPressure();
+
     // compute loop frequency
     static unsigned long lastLoopTime = 0;
     static float loopFrequency = 0.0f;
@@ -74,6 +78,8 @@ void loop() {
         gripper.verbose();
         Serial.print("Loop Frequency: ");
         Serial.println(loopFrequency);
+        Serial.print("Pressure: ");
+        Serial.println(pressure);
     }
 
     delay(1);
