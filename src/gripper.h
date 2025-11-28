@@ -20,13 +20,18 @@ public:
     void setPosition(int32_t newPos);
     void setSpeed(int newSpeed);
     void setMicroSteppingMode(int newMicroSteps);
+    void setMaxOpSpeed(int maxSpeed);
+    void setMinOpSpeed(int minSpeed);
+    void setOpAccel(float accel);
+    void setVerbose(bool enabled);
 
     int32_t getPosition();
     int32_t getStepCount();
     int getMicroSteppingMode();
     int getSpeed();
     int32_t getFinalPosition();
-
+    int getfsmState();
+    
     void getFruitSize();
 
     void stepperSetOrigin();
@@ -36,6 +41,8 @@ public:
 
     void servoSetup();
     bool servoRotate();
+
+    void verbose();
 
 private:
     inline void setMicroSteps();
@@ -53,18 +60,24 @@ private:
     int lastStep;
     int step;
 
+    int maxOpSpeed;
+    int minOpSpeed;
+    float opAccel;
+
     int fruitSize;
+
+    bool verboseEnabled;
 
 
 };
 
+void commandHandler(Gripper* gripper);
+
 float InterpolToAngle(float length);
 float InterpolToLength(float angle);
 
-void debugCommandHandler(int cmd, Gripper* gripper);
 void sendMessage(const char* msg);
 bool readMessage(char* outCmd, char* outArg1, char* outArg2);
-int getCommand();
 
 void statusLedBlinking(bool enabled);
 void buzzerBeep(int duration, bool setup); // if setup is true, start the beep, if false, stop after duration

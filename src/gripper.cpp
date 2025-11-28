@@ -6,9 +6,6 @@ MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR m
 
 // convertion functions def
 static inline float rpmToStepsPerSec(int rpm);
-static inline float rpmToStepsPerSec(int rpm);
-
-static inline float rpmToStepsPerSec(int rpm);
 static inline int stepsPerSecToRpm(float stepsPerSec);
 
 
@@ -25,6 +22,13 @@ Gripper::Gripper() {
     finalPos = 0;
     lastStep = 0;
     step = 0;
+    fsmState = STATE_INIT;
+    maxOpSpeed = MAX_STEPPER_SPEED;
+    minOpSpeed = 20;
+    opAccel = 1000.0f; // steps/sec^2
+    fruitSize = UNDEFINED_SIZE;
+    verboseEnabled = false;
+
 }
 
 
@@ -32,6 +36,52 @@ Gripper::Gripper() {
 // FSM loop: Handles state machine transitions and state-specific behaviors
 //================================================================================================================
 void Gripper::fsm_loop() {
+    switch(fsmState) {
+        case STATE_INIT:
+            setupGripper();
+            Serial.println("Gripper initialized!");
+            fsmState = STATE_IDLE;
+            break;
+        case STATE_CALIBRATE:
+            Serial.println("Starting calibration...");
+            stepperSetOrigin();
+            fsmState = STATE_ARM;
+            break;
+        case STATE_IDLE:
+            stepperDisable();
+            break;
+        case STATE_ARM:
+            stepperEnable();
+            PPM_computer();
+            break;
+        case STATE_GRIP:
+            // Grip state actions
+            break;
+        case STATE_SORT:
+            // Sort state actions
+            break;
+        case STATE_MOVE_BOX:
+            // Move box state actions
+            break;
+        case STATE_RELEASE:
+            // Release state actions
+            break;
+        case STATE_DEBUG_STEPPER:
+            verbose();
+            break;
+        case STATE_DEBUG_TRACK_PRESS:
+            // Debug track pressure state actions
+            break;
+        case STATE_DEBUG_SERVO:
+            // Debug servo state actions
+            break;
+        case STATE_DEBUG_PRINT_PRESS:
+            // Debug print pressure state actions
+            break;
+        default:
+            // Default case
+            break;
+    }
 
     return; // Temporarily disabled
 }
@@ -46,6 +96,12 @@ void Gripper::stepperUpdate() {
         return; // Stepper is disabled, do nothing
     }
     static int stepIncrement = 0; // persistent variable to hold required step delta
+    // Protect gripper from exceding mechanical limits
+    if (finalPos > MAX_POSITION) {
+        finalPos = MAX_POSITION;
+    } else if (finalPos < MIN_POSITION) {
+        finalPos = MIN_POSITION;
+    }
     setMicroSteps(); // apply current micro-stepping pin configuration
     step = gripperStepper.readSteps(); // read absolute step count from the stepper driver
     // update logical position (convert hardware steps to user steps by dividing out micro-stepping)
@@ -70,10 +126,10 @@ void Gripper::PPM_computer() {
         return;
     }
 
-    // Constants in steps/sec
-    const float vmax_stepsSec = rpmToStepsPerSec(MAX_STEPPER_SPEED);
-    const float vmin_stepsSec = rpmToStepsPerSec(MIN_RUN_SPEED);
-    const float a = static_cast<float>(ACCELERATION); // steps/sec^2 (ensure ACCELERATION matches this)
+    // steps/sec
+    static float vmax_stepsSec = rpmToStepsPerSec(maxOpSpeed);
+    static float vmin_stepsSec = rpmToStepsPerSec(minOpSpeed);
+    static float a = opAccel; // steps/sec^2 (ensure ACCELERATION matches this)
 
     // Persistent profile state
     static int32_t lastTarget = 0;
@@ -90,6 +146,12 @@ void Gripper::PPM_computer() {
 
     // Start new profile if target changed
     if (finalPos != lastTarget) {
+
+        // update profile parameters
+        vmax_stepsSec = rpmToStepsPerSec(maxOpSpeed);
+        vmin_stepsSec = rpmToStepsPerSec(minOpSpeed);
+        a = opAccel; // steps/sec^2
+
         int32_t dist_steps = abs(finalPos - pos); // full steps
         v_start = rpmToStepsPerSec(speed);        // current speed in steps/sec
 
@@ -209,7 +271,7 @@ bool Gripper::setupGripper() {
     delay(10);
     lastStep = gripperStepper.readSteps();
     if (attachResult == 0) {
-        sendMessage("Failed to attach stepper motor.");
+        Serial.print("Failed to attach stepper motor.");
         return false;
     }
     return true;
@@ -227,7 +289,20 @@ void Gripper::setState(int newState) {
 // Blocks until user confirms via Serial input
 //================================================================================================================
 void Gripper::stepperSetOrigin() {
-    return;; // Temporarily disabled
+    Serial.println("manually close the gripper and press enter when done");
+    digitalWrite(ENABLE_PIN, HIGH); // enforce disable to allow manual movement
+    enabled = false;
+    while (Serial.available() == 0) {
+        // wait for user input
+        delay(100);
+    }
+    pos = 0;
+    finalPos = 0;
+    Serial.println("Calibration complete. current position set to zero.");
+    digitalWrite(ENABLE_PIN, LOW); // re-enable stepper
+    enabled = true;
+    fsmState = STATE_ARM;
+    Serial.println("Gripper armed !");
 }
 
 //================================================================================================================
@@ -311,6 +386,11 @@ int Gripper::getSpeed() {
     return speed;
 }
 
+// ================================================================================================================
+int Gripper::getfsmState() {
+    return fsmState;
+}
+
 //================================================================================================================
 // Sets new target position for the gripper to move to
 //================================================================================================================
@@ -333,6 +413,39 @@ void Gripper::setMicroSteppingMode(int newMicroSteps) {
 }
 
 //================================================================================================================
+// Sets maximum operational speed for motion profiling
+//================================================================================================================
+void Gripper::setMaxOpSpeed(int maxSpeed) {
+    if (maxSpeed < 0) maxSpeed = 0;
+    else if (maxSpeed > MAX_STEPPER_SPEED) maxSpeed = MAX_STEPPER_SPEED;
+    else maxOpSpeed = maxSpeed;
+}
+
+//================================================================================================================
+// Sets minimum operational speed for motion profiling
+//================================================================================================================
+void Gripper::setMinOpSpeed(int minSpeed) {
+    if (minSpeed < 0) minSpeed = 0;
+    else if (minSpeed > MAX_STEPPER_SPEED) minSpeed = MAX_STEPPER_SPEED;
+    else minOpSpeed = minSpeed;
+}
+
+//================================================================================================================
+// Sets acceleration for motion profiling
+//================================================================================================================
+void Gripper::setOpAccel(float accel) {
+    if (accel < 0) accel = 0;
+    opAccel = accel;
+}
+
+//================================================================================================================
+// enables or disables verbose debug output
+//================================================================================================================
+void Gripper::setVerbose(bool enabled) {
+    verboseEnabled = enabled;
+}
+
+//================================================================================================================
 // Prepares servo motor for operation (attach to pin, set initial position)
 //================================================================================================================
 void Gripper::servoSetup() {
@@ -344,6 +457,160 @@ void Gripper::servoSetup() {
 bool Gripper::servoRotate() {
     return true;
 }
+
+void Gripper::verbose() {
+    Serial.println("================================================");
+    Serial.print(" Position: ");
+    Serial.println(pos);
+    Serial.print(" FinalPos: ");
+    Serial.println(finalPos);
+    Serial.print(" Speed: ");
+    Serial.println(speed);
+    Serial.print("FSM State: ");
+    if (fsmState == STATE_INIT) Serial.println("INIT");
+    else if (fsmState == STATE_IDLE) Serial.println("IDLE");
+    else if (fsmState == STATE_ARM) Serial.println("ARM");
+    else if (fsmState == STATE_CALIBRATE) Serial.println("CALIBRATE");
+    else if (fsmState == STATE_GRIP) Serial.println("GRIP");
+    else if (fsmState == STATE_SORT) Serial.println("SORT");
+    else if (fsmState == STATE_MOVE_BOX) Serial.println("MOVE_BOX");
+    else if (fsmState == STATE_RELEASE) Serial.println("RELEASE");
+    else if (fsmState == STATE_DEBUG_STEPPER) Serial.println("DEBUG_STEPPER");
+    else if (fsmState == STATE_DEBUG_TRACK_PRESS) Serial.println("DEBUG_TRACK_PRESS");
+    else if (fsmState == STATE_DEBUG_SERVO) Serial.println("DEBUG_SERVO");
+    else if (fsmState == STATE_DEBUG_PRINT_PRESS) Serial.println("DEBUG_PRINT_PRESS");
+}
+
+
+void commandHandler(Gripper* gripper) {
+    static char cmd[32], arg1[32], arg2[32];
+
+    if (readMessage(cmd, arg1, arg2)) {
+        if (strcmp(cmd, cmdStrings[0]) == 0) { // set
+            if (strlen(arg1) == 0) {
+                Serial.print("Error: Missing setting argument.");
+                return;
+            }
+            if (strcmp(arg1, "fpos") == 0) { // set fpos
+                if (strlen(arg2) == 0) {
+                    Serial.print("Error: Missing position argument.");
+                    return;
+                }
+                int32_t newPos = atoi(arg2);
+                gripper->setPosition(newPos);
+                Serial.print("Final position set.");
+            }
+            if (strcmp(arg1, "v") == 0) { // set v
+                if (strlen(arg2) == 0) {
+                    Serial.print("Error: Missing speed argument.");
+                    return;
+                }
+                int newSpeed = atoi(arg2);
+                gripper->setSpeed(newSpeed);
+                Serial.print("Speed set.");
+            }
+            if (strcmp(arg1, "ms") == 0) { // set ms
+                if (strlen(arg2) == 0) {
+                    Serial.print("Error: Missing microstepping argument.");
+                    return;
+                }
+                int newMicroSteps = atoi(arg2);
+                gripper->setMicroSteppingMode(newMicroSteps);
+                Serial.print("Microstepping mode set.");
+            }
+            if (strcmp(arg1, "vmax") == 0) { // set vmax
+                if (strlen(arg2) == 0) {
+                    Serial.print("Error: Missing max speed argument.");
+                    return;
+                }
+                int maxSpeed = atoi(arg2);
+                gripper->setMaxOpSpeed(maxSpeed);
+                Serial.print("Max operational speed set.");
+            }
+            if (strcmp(arg1, "vmin") == 0) { // set vmin
+                if (strlen(arg2) == 0) {
+                    Serial.print("Error: Missing min speed argument.");
+                    return;
+                }
+                int minSpeed = atoi(arg2);
+                gripper->setMinOpSpeed(minSpeed);
+                Serial.print("Min operational speed set.");
+            }
+            if (strcmp(arg1, "accel") == 0) { // set accel
+                if (strlen(arg2) == 0) {
+                    Serial.print("Error: Missing acceleration argument.");
+                    return;
+                }
+                float accel = atof(arg2);
+                gripper->setOpAccel(accel);
+                Serial.print("Operational acceleration set.");
+            }
+        }
+        if (strcmp(cmd, cmdStrings[1]) == 0) { // get
+            if (strlen(arg1) == 0) {
+                Serial.print("Error: Missing get argument.");
+                return;
+            }
+            if (strcmp(arg1, "pos") == 0) { // get pos
+                Serial.print("Current Position: ");
+                Serial.println(gripper->getPosition());
+            }
+            if (strcmp(arg1, "v") == 0) { // get v
+                Serial.print("Current Speed: ");
+                Serial.println(gripper->getSpeed());
+            }
+            if (strcmp(arg1, "ms") == 0) { // get ms
+                Serial.print("Current Microstepping Mode: ");
+                Serial.println(gripper->getMicroSteppingMode());
+            }
+            if (strcmp(arg1, "fpos") == 0) { // get fpos
+                Serial.print("Final Position: ");
+                Serial.println(gripper->getFinalPosition());
+            }
+            if (strcmp(arg1, "state") == 0) { // get state
+                Serial.print("Current FSM State: ");
+                Serial.println(gripper->getfsmState());
+            }
+        }
+        if (strcmp(cmd, cmdStrings[2]) == 0) { // cal
+            gripper->stepperSetOrigin();
+            Serial.print("Command calibrate terminated.");
+        }
+        if (strcmp(cmd, cmdStrings[3]) == 0) { // arm
+            if (gripper->getfsmState() != STATE_INIT) {
+                gripper->setState(STATE_ARM);
+                Serial.print("Gripper armed.");
+            }
+        }
+        if (strcmp(cmd, cmdStrings[4]) == 0) { // disarm
+            gripper->setState(STATE_IDLE);
+            Serial.print("Gripper disarmed.");
+        }
+        if (strcmp(cmd, cmdStrings[9]) == 0) { // status
+            gripper->verbose();
+        }
+        if (strcmp(cmd, cmdStrings[10]) == 0) { // verbose
+            if (strlen(arg1) == 0) {
+                Serial.print("Error: Missing verbose argument.");
+                return;
+            }
+            if (strcmp(arg1, "on") == 0) { // verbose on
+                gripper->setVerbose(true);
+                Serial.print("Verbose mode enabled.");
+            } else if (strcmp(arg1, "off") == 0) { // verbose off
+                gripper->setVerbose(false);
+                Serial.print("Verbose mode disabled.");
+            } else {
+                Serial.print("Error: Invalid verbose argument. Use 'on' or 'off'.");
+            }
+        }
+
+
+        // Handle other commands similarly...
+    }
+    else return;
+}
+
 
 //================================================================================================================
 // Converts gripper finger length to motor rotation angle via linear interpolation
@@ -385,99 +652,6 @@ float InterpolToLength(float angle) {
         }
     }
     return interpolSample[INTERPOL_SAMPLES - 1][0];
-}
-
-//================================================================================================================
-// Debug command dispatcher: processes serial commands to control gripper during testing
-// Handles setup, calibration, movement, and configuration commands
-//================================================================================================================
-void debugCommandHandler(int cmd, Gripper* gripper) {
-    if (cmd != -1 && gripper != nullptr) {
-        switch (cmd) {
-            case CMD_SETUP_STEPPER:
-                sendMessage("Setting up stepper...");
-                if (gripper->setupGripper()) {
-                    sendMessage("Stepper setup complete.");
-                } else {
-                    sendMessage("Stepper setup failed.");
-                }
-                break;
-            case CMD_SET_ORIGIN:
-                sendMessage("Setting origin...");
-                gripper->stepperSetOrigin();
-                sendMessage("Origin set.");
-                break;
-            case CMD_SET_MICROSTEPPING:
-            {
-                sendMessage("Enter new microstepping mode (2, 4, 8, 16):");
-                while(!Serial.available()) {
-                    delay(10);
-                }
-                char* msg = readMessage();
-                if (msg != nullptr) {
-                    int newMicroSteps = atoi(msg);
-                    if (newMicroSteps == 2 || newMicroSteps == 4 || newMicroSteps == 8 || newMicroSteps == 16) {
-                        gripper->setMicroSteppingMode(newMicroSteps);
-                        sendMessage("Microstepping set to ");
-                        Serial.println(gripper->getMicroSteppingMode());
-                    } else {
-                        sendMessage("Invalid microstepping mode.");
-                    }
-                }
-                break;
-            }
-            case CMD_MOVE_UNTIL_CLOSED:
-                sendMessage("Moving until closed...");
-                // Implement move until closed logic here
-                sendMessage("Movement complete.");
-                break;
-
-            case CMD_ENABLE_STEPPER:
-                sendMessage("Enabling stepper...");
-                gripper->stepperEnable();
-                sendMessage("Stepper enabled.");
-                break;
-
-            case CMD_DISABLE_STEPPER:
-                sendMessage("Disabling stepper...");
-                gripper->stepperDisable();
-                sendMessage("Stepper disabled.");
-                break;
-
-            case CMD_DO_STEPS:
-                sendMessage("Enter position to move to:");
-                while(!Serial.available()) {
-                    delay(10);
-                }
-                {
-                    char* msg = readMessage();
-                    if (msg != nullptr) {
-                        int newPos = atoi(msg);
-                        gripper->setPosition(newPos);
-                        sendMessage("Moving to position ");
-                        Serial.println(gripper->getPosition());
-                    }
-                }
-                break;
-
-            case CMD_ROTATE:
-                sendMessage("Rotating...");
-                // Implement rotation logic here
-                sendMessage("Rotation complete.");
-                break;
-
-            default:
-                sendMessage("Unknown command.");
-                break;
-        }
-    }
-}
-
-//================================================================================================================
-// Sends a message string over Serial for debugging/user feedback
-//================================================================================================================
-void sendMessage(const char* msg) {
-    Serial.println(msg);
 }
 
 //================================================================================================================
@@ -536,40 +710,11 @@ bool readMessage(char* outCmd, char* outArg1, char* outArg2) {
         } else {
             // Buffer overflow - reset
             bufferIndex = 0;
-            sendMessage("Error: Command too long");
+            Serial.print("Error: Command too long");
         }
     }
     
     return false; // No complete command yet
-}
-
-//================================================================================================================
-// Parses Serial input string and returns corresponding command code
-// Returns -1 if no command or unknown command
-//================================================================================================================
-int getCommand() {
-    char* msg = readMessage();
-    if (msg == nullptr) {
-        return -1; // No command available
-    }
-    if (strcmp(msg, "set_origin") == 0) {
-        return CMD_SET_ORIGIN;
-    } else if (strcmp(msg, "set_microstepping") == 0) {
-        return CMD_SET_MICROSTEPPING;
-    } else if (strcmp(msg, "move_until_closed") == 0) {
-        return CMD_MOVE_UNTIL_CLOSED;
-    } else if (strcmp(msg, "enable_stepper") == 0) {
-        return CMD_ENABLE_STEPPER;
-    } else if (strcmp(msg, "disable_stepper") == 0) {
-        return CMD_DISABLE_STEPPER;
-    } else if (strcmp(msg, "do_steps") == 0) {
-        return CMD_DO_STEPS;
-    } else if (strcmp(msg, "rotate") == 0) {
-        return CMD_ROTATE;
-    } else if (strcmp(msg, "setup_stepper") == 0) {
-        return CMD_SETUP_STEPPER;
-    }
-    return -1; // Unknown command
 }
 
 //================================================================================================================

@@ -13,12 +13,12 @@
 #define PRESSURE_SENSOR_PIN 34
 #define SERVO_PIN 4
 
-// Absolute maximum stepper speed and acceleration
+// Absolute maximum stepper speed
 #define MAX_STEPPER_SPEED 420 // rotations/min (200 steps/rev -> 420*200=84000 steps/min)
 
-// constants for PPM driver
-#define ACCELERATION 1000  // steps/sec^2
-#define MIN_RUN_SPEED 20  // rotations/min
+// Absolute maximum position range
+#define MAX_POSITION 100000 // in steps
+#define MIN_POSITION 0      // in steps
 
 // constants for PID controller
 #define MAX_OPENING 100       // Maximum opening distance in mm
@@ -28,15 +28,26 @@
 //fuit size thresholds in mm
 #define FRUIT_SIZE_THRESHOLD 60.0f
 
-enum COMMANDS {
-    CMD_SETUP_STEPPER,
-    CMD_SET_ORIGIN,
-    CMD_SET_MICROSTEPPING,
-    CMD_MOVE_UNTIL_CLOSED,
-    CMD_ENABLE_STEPPER,
-    CMD_DISABLE_STEPPER,
-    CMD_DO_STEPS,
-    CMD_ROTATE
+
+
+
+
+
+
+
+
+const char* cmdStrings[] = {
+    "set",
+    "get",
+    "cal",
+    "arm",
+    "disarm",
+    "grip",
+    "release",
+    "getsize",
+    "getpress",
+    "status",
+    "verbose",
 };
 
 enum FSM_STATES {
