@@ -412,6 +412,24 @@ void Gripper::setMicroSteppingMode(int newMicroSteps) {
     microSteppingMode = newMicroSteps;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 //================================================================================================================
 // Sets maximum operational speed for motion profiling
 //================================================================================================================
