@@ -45,13 +45,13 @@ void setup() {
     digitalWrite(LED6_PIN, LOW);
     digitalWrite(BUZZER_PIN, LOW);
 
-    gripper.setState(STATE_STEPPER_SPEED_TEST);
     gripper.setSpeed(0);
 }
 
 
 
 void loop() {
+    /*
     static int cmd = -1;
     cmd = getCommand();
     debugCommandHandler(cmd, &gripper);
@@ -89,9 +89,25 @@ void loop() {
     buzzerBeep(50, false); // Check and stop beep if duration elapsed
     lastDiff = diff;
 
-
-
     delay(1);
+    */
+
+
+    // Test code for readMessage function
+    static char cmd[32], arg1[32], arg2[32];
+    
+    if (readMessage(cmd, arg1, arg2)) {
+        Serial.println("=== Command Received ===");
+        Serial.print("Command: ");
+        Serial.println(cmd);
+        Serial.print("Argument 1: ");
+        Serial.println(strlen(arg1) > 0 ? arg1 : "(empty)");
+        Serial.print("Argument 2: ");
+        Serial.println(strlen(arg2) > 0 ? arg2 : "(empty)");
+        Serial.println("========================");
+    }
+    
+    delay(10);
 }
 
 

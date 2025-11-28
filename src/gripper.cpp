@@ -32,41 +32,8 @@ Gripper::Gripper() {
 // FSM loop: Handles state machine transitions and state-specific behaviors
 //================================================================================================================
 void Gripper::fsm_loop() {
-    switch (fsmState) {
-        case STATE_IDLE:
-            finalPos = pos; // Hold position
-            stepperDisable();
-            break;
 
-        case STATE_STEPPER_SPEED_TEST:
-            // Non-blocking speed test: ramps speed up to MAX, holds 3s, then ramps down
-            static int testLastTime = 0;
-            static bool increasing = true;
-            if (millis() - testLastTime >= 100) { // every 100 ms
-                if (increasing) {
-                    speed += (int)(MAX_STEPPER_SPEED / 100); // increase speed
-                    if (speed >= MAX_STEPPER_SPEED) {
-                        speed = MAX_STEPPER_SPEED;
-                        increasing = false;
-                        testLastTime = millis() + 3000; // hold for 3 seconds
-                    }
-                } else {
-                    speed -= (int)(MAX_STEPPER_SPEED / 100); // decrease speed
-                    if (speed <= 0) {
-                        speed = 0;
-                        increasing = true;
-                        testLastTime = millis() + 3000; // hold for 3 seconds
-                    }
-                }
-                stepperSetDir(1, speed, microSteppingMode);
-                testLastTime = millis();
-            }
-            break;
-
-        default:
-            // Handle unknown state
-            break;
-    }
+    return; // Temporarily disabled
 }
 
 //================================================================================================================
@@ -260,22 +227,7 @@ void Gripper::setState(int newState) {
 // Blocks until user confirms via Serial input
 //================================================================================================================
 void Gripper::stepperSetOrigin() {
-    stepperDisable();
-    sendMessage("Close gripper to set origin and enter \"ok\".");
-    while(1) {
-        while(!Serial.available()) {
-            // Wait for user input
-            delay(10);
-        }
-        char* msg = readMessage();
-        if (msg != nullptr && strcmp(msg, "ok") == 0) {
-            pos = 0;
-            finalPos = 0;
-            sendMessage("Origin set.");
-            stepperEnable();
-            return;
-        }
-    }
+    return;; // Temporarily disabled
 }
 
 //================================================================================================================
@@ -530,31 +482,65 @@ void sendMessage(const char* msg) {
 
 //================================================================================================================
 // Reads a line of text from Serial input, handling CR/LF properly
-// Returns nullptr if no data available, empty string for ENTER key, or message text
+// Parses command format: "<command> <arg1> <arg2>" or "<command> <arg1>" or "<command>"
+// Returns true if a complete command was parsed, false if still reading or no data
+// Non-blocking: accumulates chars until newline, then parses into outCmd/outArg1/outArg2
 //================================================================================================================
-char* readMessage() {
-    static char buffer[100];
-    if (!Serial.available()) {
-        return nullptr;
-    }
-
-    // If the next byte(s) are only CR/LF (ENTER), consume them and return an empty string
-    int peeked = Serial.peek();
-    if (peeked == '\n' || peeked == '\r') {
-        while (Serial.available() && (Serial.peek() == '\n' || Serial.peek() == '\r')) {
-            Serial.read();
+bool readMessage(char* outCmd, char* outArg1, char* outArg2) {
+    static char buffer[128];
+    static int bufferIndex = 0;
+    
+    // Clear output buffers
+    outCmd[0] = '\0';
+    outArg1[0] = '\0';
+    outArg2[0] = '\0';
+    
+    // Read available characters
+    while (Serial.available() > 0) {
+        char c = Serial.read();
+        
+        // Handle newline (command complete)
+        if (c == '\n' || c == '\r') {
+            if (bufferIndex > 0) {
+                buffer[bufferIndex] = '\0'; // Null-terminate
+                
+                // Parse the buffer into command and arguments
+                char* token = strtok(buffer, " ");
+                if (token != nullptr) {
+                    strncpy(outCmd, token, 31);
+                    outCmd[31] = '\0';
+                    
+                    token = strtok(nullptr, " ");
+                    if (token != nullptr) {
+                        strncpy(outArg1, token, 31);
+                        outArg1[31] = '\0';
+                        
+                        token = strtok(nullptr, " ");
+                        if (token != nullptr) {
+                            strncpy(outArg2, token, 31);
+                            outArg2[31] = '\0';
+                        }
+                    }
+                }
+                
+                bufferIndex = 0; // Reset buffer
+                return true; // Command ready
+            }
+            // Ignore empty lines (just CR/LF)
+            continue;
         }
-        buffer[0] = '\0';
-        return buffer;
+        
+        // Accumulate characters
+        if (bufferIndex < sizeof(buffer) - 1) {
+            buffer[bufferIndex++] = c;
+        } else {
+            // Buffer overflow - reset
+            bufferIndex = 0;
+            sendMessage("Error: Command too long");
+        }
     }
-
-    // Read a line up to '\n'
-    size_t len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-    if (len > 0 && buffer[len - 1] == '\r') {
-        len--;
-    }
-    buffer[len] = '\0';
-    return buffer;
+    
+    return false; // No complete command yet
 }
 
 //================================================================================================================

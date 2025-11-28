@@ -63,7 +63,7 @@ float InterpolToLength(float angle);
 
 void debugCommandHandler(int cmd, Gripper* gripper);
 void sendMessage(const char* msg);
-char* readMessage();
+bool readMessage(char* outCmd, char* outArg1, char* outArg2);
 int getCommand();
 
 void statusLedBlinking(bool enabled);
