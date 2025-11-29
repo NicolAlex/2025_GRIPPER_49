@@ -43,7 +43,7 @@ public:
     Gripper();
     //~Gripper();
 
-    void fsm_loop();
+    void fsm_loop(int *PS4_status);
     
     void stepperUpdate();
 
@@ -70,7 +70,8 @@ public:
     
     void getFruitSize();
 
-    void stepperSetOrigin();
+    void stepperSetOrigin_fromSerial();
+    void stepperSetOrigin_fromPS4(int *PS4_status);
 
     void stepperEnable();
     void stepperDisable();
@@ -78,7 +79,7 @@ public:
     void servoSetup();
     bool servoRotate();
 
-    void verbose();
+    void verbose(int *PS4_status);
 
     // public variables
     bool verboseEnabled;
@@ -109,6 +110,7 @@ private:
 };
 
 void commandHandler(Gripper* gripper);
+void PS4_cmdHandler(int *PS4_status, Gripper* gripper);
 
 float InterpolToAngle(float length);
 float InterpolToLength(float angle);
@@ -118,3 +120,4 @@ bool readMessage(char* outCmd, char* outArg1, char* outArg2);
 
 void statusLedBlinking(bool enabled);
 void buzzerBeep(int duration, bool setup); // if setup is true, start the beep, if false, stop after duration
+void limitedBeep(int ms, int bips); // blocking beep for duration ms

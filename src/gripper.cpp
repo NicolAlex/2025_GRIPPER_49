@@ -38,20 +38,43 @@ Gripper::Gripper() {
 //================================================================================================================
 // FSM loop: Handles state machine transitions and state-specific behaviors
 //================================================================================================================
-void Gripper::fsm_loop() {
+void Gripper::fsm_loop(int *PS4_status) {
     switch(fsmState) {
         case STATE_INIT:
             setupGripper();
-            Serial.println("Gripper initialized!");
-            fsmState = STATE_IDLE;
+            stepperDisable(); // ensure stepper is disabled at init
+            fsmState = STATE_GOOFY;
+            Serial.println("WARNING : Entering GOOFY state. Please calibrate the gripper.");
             break;
-        case STATE_CALIBRATE:
+        case STATE_GOOFY:
+            stepperDisable();
+            break;
+        case STATE_CALIBRATE_SERIAL:
             Serial.println("Starting calibration...");
-            stepperSetOrigin();
+            stepperSetOrigin_fromSerial();
+            fsmState = STATE_ARM;
+            break;
+        case STATE_CALIBRATE_PS4:
+            Serial.println("Starting calibration...");
+            stepperSetOrigin_fromPS4(PS4_status);
             fsmState = STATE_ARM;
             break;
         case STATE_IDLE:
             stepperDisable();
+            break;
+        case STATE_UNIFORM_MOVE:
+            // Uniform move state actions
+            stepperEnable();
+            if (PS4_status[BUTTON_LEFT] == 1 || PS4_status[BUTTON_LEFT] == -1) {
+                stepperSetDir(1,100, microSteppingMode);
+            } else if (PS4_status[BUTTON_RIGHT] == 1 || PS4_status[BUTTON_RIGHT] == -1) {
+                stepperSetDir(-1,100, microSteppingMode);
+            }
+            else {
+                stepperSetDir(0,0, microSteppingMode); // Stop gripper
+                fsmState = STATE_ARM;
+                finalPos = pos; // hold position
+            }
             break;
         case STATE_ARM:
             stepperEnable();
@@ -80,7 +103,7 @@ void Gripper::fsm_loop() {
             // Release state actions
             break;
         case STATE_DEBUG_STEPPER:
-            verbose();
+            verbose(PS4_status);
             break;
         case STATE_DEBUG_TRACK_PRESS:
             // Debug track pressure state actions
@@ -291,6 +314,7 @@ bool Gripper::setupGripper() {
         Serial.print("Failed to attach stepper motor.");
         return false;
     }
+    Serial.println("Gripper initialized!");
     return true;
 }
 
@@ -305,7 +329,7 @@ void Gripper::setState(int newState) {
 // Interactive calibration: waits for user to manually close gripper, then sets position to zero
 // Blocks until user confirms via Serial input
 //================================================================================================================
-void Gripper::stepperSetOrigin() {
+void Gripper::stepperSetOrigin_fromSerial() {
     Serial.println("manually close the gripper and press enter when done");
     digitalWrite(ENABLE_PIN, HIGH); // enforce disable to allow manual movement
     enabled = false;
@@ -316,6 +340,25 @@ void Gripper::stepperSetOrigin() {
     pos = 0;
     finalPos = 0;
     Serial.println("Calibration complete. current position set to zero.");
+    digitalWrite(ENABLE_PIN, LOW); // re-enable stepper
+    enabled = true;
+    fsmState = STATE_ARM;
+    Serial.println("Gripper armed !");
+}
+
+void Gripper::stepperSetOrigin_fromPS4(int *PS4_status) {
+    Serial.println("manually close the gripper and press enter when done");
+    digitalWrite(ENABLE_PIN, HIGH); // enforce disable to allow manual movement
+    enabled = false;
+    while (*(PS4_status + BUTTON_CROSS) != 1) {
+        // wait for user input
+        delay(10);
+    }
+    *(PS4_status + BUTTON_CROSS) = -1; // reset button state
+    pos = 0;
+    finalPos = 0;
+    Serial.println("Calibration complete. current position set to zero.");
+    limitedBeep(100,4);
     digitalWrite(ENABLE_PIN, LOW); // re-enable stepper
     enabled = true;
     fsmState = STATE_ARM;
@@ -473,22 +516,25 @@ bool Gripper::servoRotate() {
     return true;
 }
 
-void Gripper::verbose() {
+void Gripper::verbose(int *PS4_status) {
     Serial.println("================================================");
     Serial.println("GRIPPER STATUS:");
-    Serial.print(">Position: ");
+    Serial.print(" Position: ");
     Serial.println(pos);
-    Serial.print(">FinalPos: ");
+    Serial.print(" FinalPos: ");
     Serial.println(finalPos);
-    Serial.print(">Step count: ");
+    Serial.print(" Step count: ");
     Serial.println(step);
-    Serial.print(">Speed: ");
+    Serial.print(" Speed: ");
     Serial.println(speed);
-    Serial.print(">FSM State: ");
+    Serial.print(" FSM State: ");
     if (fsmState == STATE_INIT) Serial.println("INIT");
     else if (fsmState == STATE_IDLE) Serial.println("IDLE");
+    else if (fsmState == STATE_GOOFY) Serial.println("GOOFY");
+    else if (fsmState == STATE_UNIFORM_MOVE) Serial.println("UNIFORM_MOVE");
     else if (fsmState == STATE_ARM) Serial.println("ARM");
-    else if (fsmState == STATE_CALIBRATE) Serial.println("CALIBRATE");
+    else if (fsmState == STATE_CALIBRATE_SERIAL) Serial.println("CALIBRATE_SERIAL");
+    else if (fsmState == STATE_CALIBRATE_PS4) Serial.println("CALIBRATE_PS4");
     else if (fsmState == STATE_GRIP) Serial.println("GRIP");
     else if (fsmState == STATE_SORT) Serial.println("SORT");
     else if (fsmState == STATE_MOVE_BOX) Serial.println("MOVE_BOX");
@@ -497,6 +543,26 @@ void Gripper::verbose() {
     else if (fsmState == STATE_DEBUG_TRACK_PRESS) Serial.println("DEBUG_TRACK_PRESS");
     else if (fsmState == STATE_DEBUG_SERVO) Serial.println("DEBUG_SERVO");
     else if (fsmState == STATE_DEBUG_PRINT_PRESS) Serial.println("DEBUG_PRINT_PRESS");
+    else Serial.println("UNKNOWN");
+
+    // Print pressed buttons
+    Serial.println(" Pressed Buttons:");
+    if (PS4_status[BUTTON_CROSS] != 0) Serial.print(" X ");
+    if (PS4_status[BUTTON_CIRCLE] != 0) Serial.print(" O ");
+    if (PS4_status[BUTTON_SQUARE] != 0) Serial.print(" [] ");
+    if (PS4_status[BUTTON_TRIANGLE] != 0) Serial.print(" Δ ");
+    if (PS4_status[BUTTON_UP] != 0) Serial.print(" ^ ");
+    if (PS4_status[BUTTON_DOWN] != 0) Serial.print(" v ");
+    if (PS4_status[BUTTON_LEFT] != 0) Serial.print(" < ");
+    if (PS4_status[BUTTON_RIGHT] != 0) Serial.print(" > ");
+    Serial.println();
+
+    // debug buttzon states
+    Serial.println(" Button States:");
+    Serial.print(" UP: "); Serial.println(PS4_status[BUTTON_CROSS]);
+    Serial.print(" DOWN: "); Serial.println(PS4_status[BUTTON_CIRCLE]);
+    Serial.print(" LEFT: "); Serial.println(PS4_status[BUTTON_LEFT]);
+    Serial.print(" RIGHT: "); Serial.println(PS4_status[BUTTON_RIGHT]);
 }
 
 
@@ -603,7 +669,67 @@ float controller::getPressure() {
 
 
 
+void PS4_cmdHandler(int *PS4_status, Gripper* gripper) {
 
+    static bool rotating = false;
+    
+    if (PS4_status[CONNEXION_STATE] == 0) {
+        return;
+    }
+
+    if (PS4_status[BUTTON_CROSS] == 1) { // Cross button pressed
+        gripper->setState(STATE_CALIBRATE_PS4);
+        PS4_status[BUTTON_CROSS] = -1;
+    }
+
+    if (PS4_status[BUTTON_R1] == 1 && gripper->getfsmState() != STATE_IDLE && gripper->getfsmState() != STATE_GOOFY) { // Circle button pressed --> disarm
+        if (gripper->getfsmState() != STATE_INIT) {
+            gripper->setState(STATE_IDLE);
+            Serial.println("Gripper disarmed.");
+        }
+        PS4_status[BUTTON_R1] = -1;
+    }
+    if (PS4_status[BUTTON_R1] == 1 && gripper->getfsmState() != STATE_ARM) { // Circle button pressed --> arm
+        if (gripper->getfsmState() != STATE_INIT && gripper->getfsmState() != STATE_GOOFY) {
+            gripper->setPosition(gripper->getPosition()); // hold current position
+            gripper->setState(STATE_ARM);
+            Serial.println("Gripper armed.");
+        }
+        PS4_status[BUTTON_R1] = -1;
+    }
+
+    if (PS4_status[BUTTON_UP] == 1) { // Up button pressed
+        gripper->setPosition(MIN_POSITION); // Close gripper
+        PS4_status[BUTTON_UP] = -1;
+    }
+    if (PS4_status[BUTTON_DOWN] == 1) { // Down button pressed
+        gripper->setPosition(MAX_POSITION); // Open gripper
+        PS4_status[BUTTON_DOWN] = -1;
+    }
+
+    if (PS4_status[BUTTON_CIRCLE] == 1) { // Circle button pressed
+        if (gripper->getfsmState() == STATE_ARM) {
+            gripper->setState(STATE_GRIP);
+        }
+        PS4_status[BUTTON_CIRCLE] = -1;
+    }
+
+    if (PS4_status[BUTTON_RIGHT] == 1) { // Right button pressed, long press enabled
+        if (gripper->getfsmState() == STATE_ARM) {
+            gripper->setState(STATE_UNIFORM_MOVE);
+        }
+        PS4_status[BUTTON_RIGHT] = -1;
+    }
+
+    if (PS4_status[BUTTON_LEFT] == 1) { // Left button pressed, long press enabled
+        if (gripper->getfsmState() == STATE_ARM) {
+            gripper->setState(STATE_UNIFORM_MOVE);
+        }
+        PS4_status[BUTTON_LEFT] = -1;
+    }
+
+    
+}
 
 
 void commandHandler(Gripper* gripper) {
@@ -716,21 +842,47 @@ void commandHandler(Gripper* gripper) {
             }
         }
         if (strcmp(cmd, cmdStrings[2]) == 0) { // cal
-            gripper->stepperSetOrigin();
-            Serial.println("Command calibrate terminated.");
+            gripper->setState(STATE_CALIBRATE_SERIAL);
         }
         if (strcmp(cmd, cmdStrings[3]) == 0) { // arm
-            if (gripper->getfsmState() != STATE_INIT) {
+            if (gripper->getfsmState() != STATE_INIT && gripper->getfsmState() != STATE_GOOFY) {
+                gripper->setPosition(gripper->getPosition()); // hold current position
                 gripper->setState(STATE_ARM);
                 Serial.println("Gripper armed.");
             }
         }
         if (strcmp(cmd, cmdStrings[4]) == 0) { // disarm
-            gripper->setState(STATE_IDLE);
-            Serial.println("Gripper disarmed.");
+            if (gripper->getfsmState() != STATE_INIT && gripper->getfsmState() != STATE_GOOFY) {
+                gripper->setState(STATE_IDLE);
+                Serial.println("Gripper disarmed.");
+            }
         }
         if (strcmp(cmd, cmdStrings[9]) == 0) { // status
-            gripper->verbose();
+            Serial.println("--- GRIPPER STATUS ---");
+            Serial.print(" Current Position: ");
+            Serial.println(gripper->getPosition());
+            Serial.print(" Final Position: ");
+            Serial.println(gripper->getFinalPosition());
+            Serial.print(" Speed: ");
+            Serial.println(gripper->getSpeed());
+            Serial.print(" Microstepping Mode: ");
+            Serial.println(gripper->getMicroSteppingMode());
+            Serial.print(" FSM State: ");
+            if (gripper->getfsmState() == STATE_INIT) Serial.println("INIT");
+            else if (gripper->getfsmState() == STATE_IDLE) Serial.println("IDLE");
+            else if (gripper->getfsmState() == STATE_GOOFY) Serial.println("GOOFY");
+            else if (gripper->getfsmState() == STATE_UNIFORM_MOVE) Serial.println("UNIFORM_MOVE");
+            else if (gripper->getfsmState() == STATE_ARM) Serial.println("ARM");
+            else if (gripper->getfsmState() == STATE_CALIBRATE_SERIAL) Serial.println("CALIBRATE_SERIAL");
+            else if (gripper->getfsmState() == STATE_CALIBRATE_PS4) Serial.println("CALIBRATE_PS4");
+            else if (gripper->getfsmState() == STATE_GRIP) Serial.println("GRIP");
+            else if (gripper->getfsmState() == STATE_SORT) Serial.println("SORT");
+            else if (gripper->getfsmState() == STATE_MOVE_BOX) Serial.println("MOVE_BOX");
+            else if (gripper->getfsmState() == STATE_RELEASE) Serial.println("RELEASE");
+            else if (gripper->getfsmState() == STATE_DEBUG_STEPPER) Serial.println("DEBUG_STEPPER");
+            else if (gripper->getfsmState() == STATE_DEBUG_TRACK_PRESS) Serial.println("DEBUG_TRACK_PRESS");
+            else if (gripper->getfsmState() == STATE_DEBUG_SERVO) Serial.println("DEBUG_SERVO");
+            else if (gripper->getfsmState() == STATE_DEBUG_PRINT_PRESS) Serial.println("DEBUG_PRINT_PRESS");
         }
         if (strcmp(cmd, cmdStrings[10]) == 0) { // verbose
             if (strlen(arg1) == 0) {
@@ -915,6 +1067,16 @@ void buzzerBeep(int duration, bool setup) {
             isBeeping = false;
         }
     }
+}
+
+void limitedBeep(int ms, int bips) {           //beep temporaire
+  while (bips) {
+    digitalWrite(BUZZER_PIN,HIGH);
+    delay(ms);
+    digitalWrite(BUZZER_PIN,LOW);
+    delay(ms);
+    bips--;
+  }
 }
 
 // Helper conversions (keep near top of file or before class methods)
