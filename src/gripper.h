@@ -109,8 +109,8 @@ private:
 
 };
 
-void commandHandler(Gripper* gripper);
-void PS4_cmdHandler(int *PS4_status, Gripper* gripper);
+void commandHandler(Gripper* gripper, int *PS4_status);
+void PS4_cmdHandler(Gripper* gripper, int *PS4_status);
 
 float InterpolToAngle(float length);
 float InterpolToLength(float angle);

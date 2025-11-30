@@ -5,14 +5,12 @@
 
 Gripper gripper;
 
-// MoToStepper testStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
+constexpr int PS4_STATUS_SIZE = BUTTON_SHARE + 1;
+int PS4_status[PS4_STATUS_SIZE] = {0};
 
-int PS4_status[13] = {0};
-
-void PS4_update()
-{
+void PS4_update() {
     if (PS4_status[CONNEXION_STATE] == 0) {
-        for (int i = 0; i < 13; i++)
+        for (int i = 0; i < PS4_STATUS_SIZE; i++)
             PS4_status[i] = 0;
         return;
     }
@@ -101,6 +99,58 @@ void PS4_update()
     if (PS4.R2() == 0) {
         PS4_status[BUTTON_R2] = 0; // button released
     }
+
+    if (PS4_status[BUTTON_OPTIONS] == 0) { // button released by user
+        PS4_status[BUTTON_OPTIONS] = PS4.Options();
+    }
+    if (PS4.Options() == 0) {
+        PS4_status[BUTTON_OPTIONS] = 0; // button released
+    }
+
+    if (PS4_status[BUTTON_SHARE] == 0) { // button released by user
+        PS4_status[BUTTON_SHARE] = PS4.Share();
+    }
+    if (PS4.Share() == 0) {
+        PS4_status[BUTTON_SHARE] = 0; // button released
+    }
+}
+
+void PS4_sendData() {
+
+    static int lastUpdateTime = 0;
+    if (millis() - lastUpdateTime > 10) {
+        lastUpdateTime = millis();
+
+        if (PS4_status[CONNEXION_STATE] == 0) {
+            return;
+        }
+
+        static const int LED_IDLE[3] = {218, 86, 255};
+        static const int LED_ARMED[3] = {0, 255, 100};
+        static const int LED_UNIFORM_MOVE[3] = {255, 189, 0};
+        static const int LED_GRIP[3] = {255, 255, 0};
+        static const int LED_DEFAULT[3] = {255, 160, 160};
+
+        if (gripper.getfsmState() == STATE_IDLE) {
+            PS4.setLed(LED_IDLE[R], LED_IDLE[G], LED_IDLE[B]);
+            PS4.setRumble(0, 0);
+        } else if (gripper.getfsmState() == STATE_ARM) {
+            PS4.setLed(LED_ARMED[R], LED_ARMED[G], LED_ARMED[B]);
+            PS4.setRumble(0, 0);
+        } else if (gripper.getfsmState() == STATE_UNIFORM_MOVE) {
+            PS4.setLed(LED_UNIFORM_MOVE[R], LED_UNIFORM_MOVE[G], LED_UNIFORM_MOVE[B]);
+            PS4.setRumble(50, 100);
+        } else if (gripper.getfsmState() == STATE_GRIP) {
+            PS4.setLed(LED_GRIP[R], LED_GRIP[G], LED_GRIP[B]);
+            PS4.setRumble(0, 0);
+        } else {
+            PS4.setLed(LED_DEFAULT[R], LED_DEFAULT[G], LED_DEFAULT[B]);
+            PS4.setRumble(0, 0);
+        }
+
+        PS4.sendToController();
+    }
+    
 }
 
 void onConnect()
@@ -174,8 +224,9 @@ void setup() {
 
 void loop() {
 
-    commandHandler(&gripper);
-    PS4_cmdHandler(PS4_status, &gripper);
+    commandHandler(&gripper, PS4_status);
+    PS4_cmdHandler(&gripper, PS4_status);
+    PS4_sendData();
 
     gripper.fsm_loop(PS4_status);
     gripper.stepperUpdate();

@@ -66,9 +66,6 @@ enum FRUIT_SIZES {
 };
 
 
-
-
-
 enum PS4_BUTTONS {
     CONNEXION_STATE,
     BUTTON_CROSS,
@@ -83,6 +80,16 @@ enum PS4_BUTTONS {
     BUTTON_R1,
     BUTTON_L2,
     BUTTON_R2,
+    BUTTON_OPTIONS,
+    BUTTON_SHARE,
+};
+
+
+
+enum RGB {
+    R,
+    G,
+    B
 };
 
 const int ledArray[6] = {LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN, LED5_PIN, LED6_PIN};
@@ -101,3 +108,38 @@ const float interpolSample[5][2] = {
 
 #define MAX_STEP_DIR 10000
 
+
+
+
+
+// Command quick handbook :
+// set fpos <value>         : set gripper position in steps
+// set v <value>            : set gripper speed in rotations per minute
+// set ms <value>           : set microstepping mode (2, 4, 8, or 16)
+// set vmax <value>         : set maximum operating speed in rotations per minute
+// set vmin <value>         : set minimum operating speed in rotations per minute
+// set accel <value>        : set operating acceleration in rotations per minute squared
+
+// get pos                  : get current gripper position in steps
+// get v                    : get current gripper speed in rotations per minute
+// get ms                   : get current microstepping mode
+// get fpos                 : get final gripper position in steps
+// get state                : get current FSM state
+
+// cal                      : calibrate gripper using serial interface
+// arm                      : arm the gripper (hold current position)
+// disarm                   : disarm the gripper (idle state)
+// status                   : print current gripper status
+
+// verbose <on/off>         : enable/disable verbose mode (periodic status printout)
+
+// Button mappings:
+// R1 button                : arm/disarm gripper
+// Up button                : close gripper
+// Down button              : open gripper
+// Circle button            : grip action
+// Right button             : uniform move (open gripper slowly)
+// Left button              : uniform move (close gripper slowly)
+// Triangle button          : print status
+// Share button             : toggle verbose mode
+// Options button           : calibrate gripper using PS4 controller
