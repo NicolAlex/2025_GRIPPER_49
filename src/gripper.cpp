@@ -39,6 +39,7 @@ Gripper::Gripper() {
 // FSM loop: Handles state machine transitions and state-specific behaviors
 //================================================================================================================
 void Gripper::fsm_loop(int *PS4_status) {
+    static unsigned long startTime_controller = millis();
     switch(fsmState) {
         case STATE_INIT:
             setupGripper();
@@ -79,14 +80,17 @@ void Gripper::fsm_loop(int *PS4_status) {
         case STATE_ARM:
             stepperEnable();
             PPM_computer();
+            startTime_controller = millis();
             break;
         case STATE_GRIP:
             // Grip state actions
             static int gripSpeed = 0;
             gripController.readPressure();
             gripSpeed = gripController.getOutputSpeed();
-            if (gripController.checkSteadyState()) {
+            if (millis() - startTime_controller > 300 && gripController.checkSteadyState()) {
                 fsmState = STATE_SORT;
+                finalPos = pos;
+                speed = 0;
                 break;
             }
             microSteppingMode = 16; // best precision for gripping
@@ -95,12 +99,34 @@ void Gripper::fsm_loop(int *PS4_status) {
             break;
         case STATE_SORT:
             // Sort state actions
+            microSteppingMode = 2; // default microstepping mode
+            static float outputSize = 0.0f;
+            outputSize = InterpolToLength(pos);
+            Serial.print("Size of fruit: ");
+            Serial.println(outputSize);
+            Serial.print("Classified as: ");
+            if (outputSize < FRUIT_SIZE_THRESHOLD) {
+                fruitSize = FRUIT_SMALL;
+                Serial.println("SMALL");
+                limitedBeep(200, 2);
+            } else {
+                fruitSize = FRUIT_LARGE;
+                Serial.println("LARGE");
+                limitedBeep(200, 4);
+            }
+            fsmState = STATE_MOVE_BOX;
             break;
         case STATE_MOVE_BOX:
             // Move box state actions
+            fsmState = STATE_RELEASE;
             break;
         case STATE_RELEASE:
             // Release state actions
+            if (PS4_status[BUTTON_CROSS] == 1) {
+                finalPos = MAX_POSITION; // fully open gripper
+                fsmState = STATE_ARM;
+                limitedBeep(150, 6);
+            }
             break;
         case STATE_DEBUG_STEPPER:
             verbose(PS4_status);
@@ -139,7 +165,7 @@ void Gripper::stepperUpdate() {
         finalPos = MIN_POSITION;
     }
     setMicroSteps(); // apply current micro-stepping pin configuration
-    step = gripperStepper.readSteps(); // read absolute step count from the stepper driver
+    step = -gripperStepper.readSteps(); // Negate to match inverted direction
     
     // Calculate fractional position change based on microsteps
     float stepDelta = (float)(step - lastStep) / (float)microSteppingMode;
@@ -269,7 +295,7 @@ void Gripper::PPM_computer() {
 //================================================================================================================
 void Gripper::stepperMoveSteps(int steps, int runSpeed) {
     gripperStepper.setSpeed(runSpeed * microSteppingMode * 10);
-    gripperStepper.doSteps(steps * microSteppingMode);
+    gripperStepper.doSteps(-steps * microSteppingMode); // Negated to invert direction
 }
 
 //================================================================================================================
@@ -527,6 +553,8 @@ void Gripper::verbose(int *PS4_status) {
     Serial.println(step);
     Serial.print(" Speed: ");
     Serial.println(speed);
+    Serial.print(" controller error :");
+    Serial.println(gripController.getError());
     Serial.print(" FSM State: ");
     if (fsmState == STATE_INIT) Serial.println("INIT");
     else if (fsmState == STATE_IDLE) Serial.println("IDLE");
@@ -567,9 +595,12 @@ void Gripper::verbose(int *PS4_status) {
 
 
 controller::controller() {
-    // Initialize PID constants
+    // Initialize PID
+    KP = 0.1;
+    KI = 0.0;
+    KD = 0.01;
     pressure = 0.0;
-    pressureSetpoint = 0.0;
+    pressureSetpoint = 2000.0; // default setpoint
     error = 0.0;
     lastError = 0.0;
     integral = 0.0;
@@ -600,12 +631,12 @@ void controller::PID_computer() {
     lastError = error;
 
     // Convert PID output to analog output and position
-    analogOutput = pidOutput * speedFactor;
+    analogOutput = - (pidOutput * speedFactor);
 
-    if (analogOutput > MAX_STEPPER_SPEED) {
-        analogOutput = MAX_STEPPER_SPEED;
-    } else if (analogOutput < 0) {
-        analogOutput = 0;
+    if (analogOutput > MAX_SPEED_CONTROL) {
+        analogOutput = MAX_SPEED_CONTROL;
+    } else if (analogOutput < - MAX_SPEED_CONTROL) {
+        analogOutput = - MAX_SPEED_CONTROL;
     }
 
     outputSpeed = static_cast<int>(analogOutput);
@@ -642,6 +673,16 @@ void controller::setPressureSetpoint(float setpoint) {
     pressureSetpoint = setpoint;
 }
 
+void controller::setKP(float kp) {
+    KP = kp;
+}
+void controller::setKI(float ki) {
+    KI = ki;
+}
+void controller::setKD(float kd) {
+    KD = kd;
+}
+
 void controller::readPressure() {
     static float analogOutput = 0.0;
     analogOutput = analogRead(PRESSURE_SENSOR_PIN);
@@ -654,6 +695,10 @@ int controller::getOutputSpeed() {
 
 float controller::getPressure() {
     return pressure;
+}
+
+float controller::getError() {
+    return error;
 }
 
 
@@ -814,6 +859,42 @@ void commandHandler(Gripper* gripper, int *PS4_status) {
                 float accel = atof(arg2);
                 gripper->setOpAccel(accel);
                 Serial.println("Operational acceleration set.");
+            }
+            if (strcmp(arg1, "kp") == 0) { // set kp
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing KP argument.");
+                    return;
+                }
+                float kp = atof(arg2);
+                gripController.setKP(kp);
+                Serial.println("Controller KP set.");
+            }
+            if (strcmp(arg1, "ki") == 0) { // set ki
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing KI argument.");
+                    return;
+                }
+                float ki = atof(arg2);
+                gripController.setKI(ki);
+                Serial.println("Controller KI set.");
+            }
+            if (strcmp(arg1, "kd") == 0) { // set kd
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing KD argument.");
+                    return;
+                }
+                float kd = atof(arg2);
+                gripController.setKD(kd);
+                Serial.println("Controller KD set.");
+            }
+            if (strcmp(arg1, "pset") == 0) { // set pset
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing pressure setpoint argument.");
+                    return;
+                }
+                float pset = atof(arg2);
+                gripController.setPressureSetpoint(pset);
+                Serial.println("Pressure setpoint set.");
             }
         }
         if (strcmp(cmd, cmdStrings[1]) == 0) { // get

@@ -3,6 +3,26 @@
 #include "gripper.h"
 #include <PS4Controller.h>
 
+#ifdef GET_MAC_ADDRESS
+#include <esp_bt_main.h>
+#include <esp_bt_device.h>
+
+void setup()
+{
+  Serial.begin(115200);
+  PS4.begin();
+  const uint8_t* address = esp_bt_dev_get_address();
+  char str[100];
+  sprintf(str, "ESP32's Bluetooth MAC address is - %02x:%02x:%02x:%02x:%02x:%02x", address[0],address[1],address[2],address[3],address[4],address[5]);
+  Serial.println(str);
+}
+
+void loop()
+{
+
+}
+#else
+
 Gripper gripper;
 
 constexpr int PS4_STATUS_SIZE = BUTTON_SHARE + 1;
@@ -128,7 +148,7 @@ void PS4_sendData() {
         static const int LED_IDLE[3] = {218, 86, 255};
         static const int LED_ARMED[3] = {0, 255, 100};
         static const int LED_UNIFORM_MOVE[3] = {255, 189, 0};
-        static const int LED_GRIP[3] = {255, 255, 0};
+        static const int LED_GRIP[3] = {255, 0, 0};
         static const int LED_DEFAULT[3] = {255, 160, 160};
 
         if (gripper.getfsmState() == STATE_IDLE) {
@@ -139,7 +159,7 @@ void PS4_sendData() {
             PS4.setRumble(0, 0);
         } else if (gripper.getfsmState() == STATE_UNIFORM_MOVE) {
             PS4.setLed(LED_UNIFORM_MOVE[R], LED_UNIFORM_MOVE[G], LED_UNIFORM_MOVE[B]);
-            PS4.setRumble(50, 100);
+            PS4.setRumble(100, 0);
         } else if (gripper.getfsmState() == STATE_GRIP) {
             PS4.setLed(LED_GRIP[R], LED_GRIP[G], LED_GRIP[B]);
             PS4.setRumble(0, 0);
@@ -215,7 +235,7 @@ void setup() {
     Serial.println("Starting PS4 controller...");
     Serial.flush();
     
-    PS4.begin("20:43:a8:e5:6b:8e");
+    PS4.begin("c8:c9:a3:c7:8d:7e");
     
     Serial.println("Ready.");
 }
@@ -258,5 +278,6 @@ void loop() {
 
     delay(1);
 }
+#endif
 
 

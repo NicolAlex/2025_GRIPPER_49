@@ -13,16 +13,19 @@
 #define PRESSURE_SENSOR_PIN 34
 #define SERVO_PIN 4
 
+// #define GET_MAC_ADDRESS
+
 // Absolute maximum stepper speed
 #define MAX_STEPPER_SPEED 420 // rotations/min (200 steps/rev -> 420*200=84000 steps/min)
+#define MAX_SPEED_CONTROL 300
 
 // Absolute maximum position range
-#define MAX_POSITION 100000 // in steps
+#define MAX_POSITION 2290 // in steps
 #define MIN_POSITION 0      // in steps
 
 // constants for PID controller
 #define MAX_OPENING 100       // Maximum opening distance in mm
-#define ERROR_THRESHOLD 0.5   // Threshold for steady state detection
+#define ERROR_THRESHOLD 250   // Threshold for steady state detection
 #define AVERAGE_TIME_INTERVAL 100 // Time interval for averaging error in ms
 
 //fuit size thresholds in mm

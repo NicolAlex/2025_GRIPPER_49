@@ -11,16 +11,20 @@ public:
     bool checkSteadyState();
 
     void setPressureSetpoint(float setpoint);
+    void setKP(float kp);
+    void setKI(float ki);
+    void setKD(float kd);
     void readPressure();
 
     int getOutputSpeed();
     float getPressure();
     float getSetpoint();
+    float getError();
 
 private:
-    const float KP = 0.0;
-    const float KI = 0.0;
-    const float KD = 0.0;
+    float KP;
+    float KI;
+    float KD;
 
     const float speedFactor = 1.0;
 
