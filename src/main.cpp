@@ -21,8 +21,9 @@ void loop()
 {
 
 }
-#else
 
+
+#else
 Gripper gripper;
 
 constexpr int PS4_STATUS_SIZE = BUTTON_SHARE + 1;
