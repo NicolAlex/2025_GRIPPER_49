@@ -3,6 +3,7 @@
 #include "gripper.h"
 
 MoToStepper gripperStepper(200, STEPDIR); // 200 steps per revolution, STEPDIR mode
+MoToServo boxServo;
 
 controller gripController;
 
@@ -11,12 +12,11 @@ static inline float rpmToStepsPerSec(int rpm);
 static inline int stepsPerSecToRpm(float stepsPerSec);
 
 
-
 //================================================================================================================
 // Constructor: Initialize gripper with default values
 //================================================================================================================
 Gripper::Gripper() {
-    MS1state = LOW; // Default microstepping state for MS1
+    MS1state = HIGH; // Default microstepping state for MS1
     MS2state = LOW; // Default microstepping state for MS2
     enabled = false;
     microSteppingMode = 2; // Default microstepping mode (2x)
@@ -31,6 +31,7 @@ Gripper::Gripper() {
     opAccel = 1000.0f; // steps/sec^2
     fruitSize = UNDEFINED_SIZE;
     verboseEnabled = false;
+    ripe = false;
 
 }
 
@@ -85,6 +86,13 @@ void Gripper::fsm_loop(int *PS4_status) {
         case STATE_GRIP:
             // Grip state actions
             static int gripSpeed = 0;
+            if (!ripe) {
+                limitedBeep(50, 12); // alert for unripe fruit
+                fsmState = STATE_ARM;
+                finalPos = pos;
+                speed = 0;
+            }
+            else ripe = true;
             gripController.readPressure();
             gripSpeed = gripController.getOutputSpeed();
             if (millis() - startTime_controller > 300 && gripController.checkSteadyState()) {
@@ -96,6 +104,7 @@ void Gripper::fsm_loop(int *PS4_status) {
             microSteppingMode = 16; // best precision for gripping
             gripController.PID_computer();
             stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
+            boxServo.write(BOX_HOLD); // hold position
             break;
         case STATE_SORT:
             // Sort state actions
@@ -117,7 +126,7 @@ void Gripper::fsm_loop(int *PS4_status) {
             fsmState = STATE_MOVE_BOX;
             break;
         case STATE_MOVE_BOX:
-            // Move box state actions
+            boxServo.write(fruitSize == FRUIT_SMALL ? BOX_SMALL : BOX_LARGE); // hold position
             fsmState = STATE_RELEASE;
             break;
         case STATE_RELEASE:
@@ -429,7 +438,7 @@ inline void Gripper::setMicroSteps() {
             MS2state = HIGH;
             break;
         default:
-            MS1state = LOW;
+            MS1state = HIGH;
             MS2state = LOW;
             break;
     }
@@ -530,16 +539,19 @@ void Gripper::setOpAccel(float accel) {
 }
 
 //================================================================================================================
+// Sets ripeness information for the gripper
+//================================================================================================================
+void Gripper::setRipeness(bool isRipe) {
+    ripe = isRipe;
+}
+
+//================================================================================================================
 // Prepares servo motor for operation (attach to pin, set initial position)
 //================================================================================================================
 void Gripper::servoSetup() {
     // Placeholder for servo setup code
-}
-
-
-//================================================================================================================
-bool Gripper::servoRotate() {
-    return true;
+    boxServo.attach(SERVO_PIN);
+    boxServo.write(BOX_HOLD); // initial position
 }
 
 void Gripper::verbose(int *PS4_status) {
@@ -775,10 +787,22 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
         gripper->verboseEnabled = !gripper->verboseEnabled;
         PS4_status[BUTTON_SHARE] = -1;
     }
+
+    if (PS4_status[BUTTON_R2] == 1) { // R2 button pressed
+        boxServo.write(BOX_SMALL_EMPTY); // empty small box
+        limitedBeep(200, 1);
+        PS4_status[BUTTON_R2] = -1;
+    }
+
+    if (PS4_status[BUTTON_L2] == 1) { // L2 button pressed
+        boxServo.write(BOX_LARGE_EMPTY); // empty large box
+        limitedBeep(200, 1);
+        PS4_status[BUTTON_L2] = -1;
+    }
 }
 
 
-void commandHandler(Gripper* gripper, int *PS4_status) {
+void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
 
     static const char* cmdStrings[] = {
     "set",
@@ -795,7 +819,9 @@ void commandHandler(Gripper* gripper, int *PS4_status) {
     "debug_stepper",
     "debug_track_press",
     "debug_servo",
-    "debug_print_press"
+    "debug_print_press",
+    "RIPE",
+    "UNRIPE"
     };
 
     static char cmd[32], arg1[32], arg2[32];
@@ -955,6 +981,14 @@ void commandHandler(Gripper* gripper, int *PS4_status) {
                 Serial.println("Verbose mode disabled.");
             } else {
                 Serial.println("Error: Invalid verbose argument. Use 'on' or 'off'.");
+            }
+        }
+        if (strcmp(cmd, cmdStrings[15]) == 0) { // RIPE information
+            gripper->setRipeness(true);
+        }
+        if (strcmp(cmd, cmdStrings[16]) == 0) { // UNRIPE information
+            if (gripper->getfsmState() != STATE_GRIP) {
+                gripper->setRipeness(false);
             }
         }
 

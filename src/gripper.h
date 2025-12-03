@@ -64,6 +64,7 @@ public:
     void setMaxOpSpeed(int maxSpeed);
     void setMinOpSpeed(int minSpeed);
     void setOpAccel(float accel);
+    void setRipeness(bool isRipe);
 
     int32_t getPosition();
     int32_t getStepCount();
@@ -110,10 +111,12 @@ private:
 
     int fruitSize;
 
+    bool ripe;
+
 
 };
 
-void commandHandler(Gripper* gripper, int *PS4_status);
+void serial_cmdHandler(Gripper* gripper, int *PS4_status);
 void PS4_cmdHandler(Gripper* gripper, int *PS4_status);
 
 float InterpolToAngle(float length);

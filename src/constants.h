@@ -19,6 +19,13 @@
 #define MAX_STEPPER_SPEED 420 // rotations/min (200 steps/rev -> 420*200=84000 steps/min)
 #define MAX_SPEED_CONTROL 300
 
+// Servo positions
+#define BOX_HOLD 30
+#define BOX_LARGE 40
+#define BOX_SMALL 70
+#define BOX_LARGE_EMPTY 90
+#define BOX_SMALL_EMPTY 110
+
 // Absolute maximum position range
 #define MAX_POSITION 2290 // in steps
 #define MIN_POSITION 0      // in steps

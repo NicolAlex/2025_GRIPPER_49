@@ -245,7 +245,7 @@ void setup() {
 
 void loop() {
 
-    commandHandler(&gripper, PS4_status);
+    serial_cmdHandler(&gripper, PS4_status);
     PS4_cmdHandler(&gripper, PS4_status);
     PS4_sendData();
 
