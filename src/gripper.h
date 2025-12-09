@@ -81,9 +81,6 @@ public:
     void stepperEnable();
     void stepperDisable();
 
-    void servoSetup();
-    bool servoRotate();
-
     void verbose(int *PS4_status);
 
     // public variables
@@ -121,6 +118,8 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status);
 
 float InterpolToAngle(float length);
 float InterpolToLength(float angle);
+
+void servoWobble(int angle);
 
 void sendMessage(const char* msg);
 bool readMessage(char* outCmd, char* outArg1, char* outArg2);

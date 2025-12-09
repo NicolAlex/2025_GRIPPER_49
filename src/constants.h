@@ -10,21 +10,28 @@
 #define LED5_PIN 17
 #define LED6_PIN 16
 #define BUZZER_PIN 32
+#define PASSIVE_BUZZER_PIN 35
 #define PRESSURE_SENSOR_PIN 34
-#define SERVO_PIN 4
+#define SERVO_PIN 12
+#define SERVO_ENABLE_PIN 13
 
+// Flags
 // #define GET_MAC_ADDRESS
+// #define SERVO_TEST_MODE
+#define OP_MODE
+#define RIPE_ALWAYS_TRUE
+
 
 // Absolute maximum stepper speed
 #define MAX_STEPPER_SPEED 420 // rotations/min (200 steps/rev -> 420*200=84000 steps/min)
 #define MAX_SPEED_CONTROL 300
 
 // Servo positions
-#define BOX_HOLD 30
-#define BOX_LARGE 40
-#define BOX_SMALL 70
-#define BOX_LARGE_EMPTY 90
-#define BOX_SMALL_EMPTY 110
+#define BOX_HOLD 90
+#define BOX_LARGE 63
+#define BOX_SMALL 107
+#define BOX_LARGE_EMPTY 152
+#define BOX_SMALL_EMPTY 21
 
 // Absolute maximum position range
 #define MAX_POSITION 2290 // in steps

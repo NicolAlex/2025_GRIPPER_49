@@ -31,7 +31,7 @@ Gripper::Gripper() {
     opAccel = 1000.0f; // steps/sec^2
     fruitSize = UNDEFINED_SIZE;
     verboseEnabled = false;
-    ripe = false;
+    ripe = true;
 
 }
 
@@ -44,6 +44,8 @@ void Gripper::fsm_loop(int *PS4_status) {
     switch(fsmState) {
         case STATE_INIT:
             setupGripper();
+            boxServo.attach(SERVO_PIN);
+            boxServo.write(BOX_HOLD); // initial position
             stepperDisable(); // ensure stepper is disabled at init
             fsmState = STATE_GOOFY;
             Serial.println("WARNING : Entering GOOFY state. Please calibrate the gripper.");
@@ -87,24 +89,27 @@ void Gripper::fsm_loop(int *PS4_status) {
             // Grip state actions
             static int gripSpeed = 0;
             if (!ripe) {
-                limitedBeep(50, 12); // alert for unripe fruit
+                limitedBeep(25, 12); // alert for unripe fruit
+                Serial.println("Fruit not ripe enough to grip.");
                 fsmState = STATE_ARM;
                 finalPos = pos;
                 speed = 0;
             }
-            else ripe = true;
-            gripController.readPressure();
-            gripSpeed = gripController.getOutputSpeed();
-            if (millis() - startTime_controller > 300 && gripController.checkSteadyState()) {
-                fsmState = STATE_SORT;
-                finalPos = pos;
-                speed = 0;
-                break;
+            else {
+                ripe = true;
+                gripController.readPressure();
+                gripSpeed = gripController.getOutputSpeed();
+                if (millis() - startTime_controller > 300 && gripController.checkSteadyState()) {
+                    fsmState = STATE_SORT;
+                    finalPos = pos;
+                    speed = 0;
+                    break;
+                }
+                microSteppingMode = 16; // best precision for gripping
+                gripController.PID_computer();
+                stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
+                boxServo.write(BOX_HOLD); // hold position
             }
-            microSteppingMode = 16; // best precision for gripping
-            gripController.PID_computer();
-            stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
-            boxServo.write(BOX_HOLD); // hold position
             break;
         case STATE_SORT:
             // Sort state actions
@@ -131,11 +136,7 @@ void Gripper::fsm_loop(int *PS4_status) {
             break;
         case STATE_RELEASE:
             // Release state actions
-            if (PS4_status[BUTTON_CROSS] == 1) {
-                finalPos = MAX_POSITION; // fully open gripper
-                fsmState = STATE_ARM;
-                limitedBeep(150, 6);
-            }
+            // nothing
             break;
         case STATE_DEBUG_STEPPER:
             verbose(PS4_status);
@@ -545,15 +546,6 @@ void Gripper::setRipeness(bool isRipe) {
     ripe = isRipe;
 }
 
-//================================================================================================================
-// Prepares servo motor for operation (attach to pin, set initial position)
-//================================================================================================================
-void Gripper::servoSetup() {
-    // Placeholder for servo setup code
-    boxServo.attach(SERVO_PIN);
-    boxServo.write(BOX_HOLD); // initial position
-}
-
 void Gripper::verbose(int *PS4_status) {
     Serial.println("================================================");
     Serial.println("GRIPPER STATUS:");
@@ -612,7 +604,7 @@ controller::controller() {
     KI = 0.0;
     KD = 0.01;
     pressure = 0.0;
-    pressureSetpoint = 2000.0; // default setpoint
+    pressureSetpoint = 1000.0; // default setpoint
     error = 0.0;
     lastError = 0.0;
     integral = 0.0;
@@ -764,6 +756,14 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
         PS4_status[BUTTON_CIRCLE] = -1;
     }
 
+    if (PS4_status[BUTTON_CROSS] == 1) { // Square button pressed
+        if (gripper->getfsmState() == STATE_RELEASE) {
+            gripper->setState(STATE_ARM);
+            gripper->setPosition(MAX_POSITION);
+        }
+        PS4_status[BUTTON_CROSS] = -1;
+    }
+
     if (PS4_status[BUTTON_RIGHT] == 1) { // Right button pressed, long press enabled
         if (gripper->getfsmState() == STATE_ARM) {
             gripper->setState(STATE_UNIFORM_MOVE);
@@ -790,14 +790,20 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
 
     if (PS4_status[BUTTON_R2] == 1) { // R2 button pressed
         boxServo.write(BOX_SMALL_EMPTY); // empty small box
-        limitedBeep(200, 1);
+        limitedBeep(100, 1);
         PS4_status[BUTTON_R2] = -1;
     }
 
     if (PS4_status[BUTTON_L2] == 1) { // L2 button pressed
         boxServo.write(BOX_LARGE_EMPTY); // empty large box
-        limitedBeep(200, 1);
+        limitedBeep(100, 1);
         PS4_status[BUTTON_L2] = -1;
+    }
+
+    if (PS4_status[BUTTON_L1] == 1) { // L1 button pressed
+        boxServo.write(BOX_HOLD); // hold position
+        limitedBeep(100, 1);
+        PS4_status[BUTTON_L1] = -1;
     }
 }
 
@@ -922,6 +928,15 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
                 gripController.setPressureSetpoint(pset);
                 Serial.println("Pressure setpoint set.");
             }
+            if (strcmp(arg1, "servo") == 0) { // set servo
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing servo position argument.");
+                    return;
+                }
+                int servoPos = atoi(arg2);
+                servoWobble(servoPos);
+                Serial.println("Servo position set.");
+            }
         }
         if (strcmp(cmd, cmdStrings[1]) == 0) { // get
             if (strlen(arg1) == 0) {
@@ -985,6 +1000,7 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
         }
         if (strcmp(cmd, cmdStrings[15]) == 0) { // RIPE information
             gripper->setRipeness(true);
+            digitalWrite(LED5_PIN, HIGH); // Indicate ripe status
         }
         if (strcmp(cmd, cmdStrings[16]) == 0) { // UNRIPE information
             if (gripper->getfsmState() != STATE_GRIP) {
@@ -997,6 +1013,17 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
     }
     else return;
 }
+
+//================================================================
+void servoWobble(int angle) {
+    static int increase = 10;
+    for(int i = 0; boxServo.read() != angle; i ++)
+    {
+        int sign = ((i % 3 == 0) ? -1 : 1);
+        boxServo.write((boxServo.read() + increase) * sign);
+    }
+}
+
 
 
 //================================================================================================================

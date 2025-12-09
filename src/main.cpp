@@ -21,9 +21,41 @@ void loop()
 {
 
 }
+#endif
 
 
-#else
+#ifdef SERVO_TEST_MODE
+
+MoToServo testServo;
+
+void setup() {
+    Serial.begin(115200);
+    pinMode(SERVO_PIN, OUTPUT);
+    testServo.attach(SERVO_PIN);
+    Serial.println("Servo Test Mode: Rotating servo between positions.");
+}
+
+void loop() {
+    // Sweep servo from min to max position
+    for (int pos = 0; pos <= 180; pos += 5) {
+        testServo.write(pos);
+        Serial.print("Servo position: ");
+        Serial.println(pos);
+        delay(500);
+    }
+    
+    // Sweep back from max to min
+    for (int pos = 180; pos >= 0; pos -= 5) {
+        testServo.write(pos);
+        Serial.print("Servo position: ");
+        Serial.println(pos);
+        delay(500);
+    }
+}
+
+#endif
+
+#ifdef OP_MODE
 Gripper gripper;
 
 constexpr int PS4_STATUS_SIZE = BUTTON_SHARE + 1;
@@ -198,6 +230,7 @@ void setup() {
     pinMode(ENABLE_PIN, OUTPUT);
     pinMode(DIR_PIN, OUTPUT);
     pinMode(STEP_PIN, OUTPUT);
+    pinMode(SERVO_PIN, OUTPUT);
 
     pinMode(LED1_PIN, OUTPUT);
     pinMode(LED2_PIN, OUTPUT);
