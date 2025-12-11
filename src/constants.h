@@ -24,7 +24,7 @@
 
 // Absolute maximum stepper speed
 #define MAX_STEPPER_SPEED 420 // rotations/min (200 steps/rev -> 420*200=84000 steps/min)
-#define MAX_SPEED_CONTROL 300
+#define MAX_SPEED_CONTROL 200
 
 // Servo positions
 #define BOX_HOLD 90
@@ -39,16 +39,14 @@
 
 // constants for PID controller
 #define MAX_OPENING 100       // Maximum opening distance in mm
-#define ERROR_THRESHOLD 250   // Threshold for steady state detection
-#define AVERAGE_TIME_INTERVAL 100 // Time interval for averaging error in ms
-
-//fuit size thresholds in mm
-#define FRUIT_SIZE_THRESHOLD 15.0f
+#define ERROR_THRESHOLD 100   // Threshold for steady state detection
+#define ERROR_AVERAGE_TIME_INTERVAL 100 // Time interval for averaging error in ms
+#define PRESSURE_AVERAGE_TIME_INTERVAL 20 // Time interval for averaging pressure in ms for size detection
 
 
 
 
-//extern const char* cmdStrings[];  // Declaration only
+extern const char* cmdStrings[];  // Declaration only
 
 enum FSM_STATES {
     STATE_INIT,
@@ -57,6 +55,7 @@ enum FSM_STATES {
     STATE_CALIBRATE_PS4,
     STATE_IDLE,
     STATE_ARM,
+    STATE_FEEL,
     STATE_UNIFORM_MOVE,
     STATE_GRIP,
     STATE_SORT,

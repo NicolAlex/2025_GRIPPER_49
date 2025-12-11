@@ -32,6 +32,7 @@ Gripper::Gripper() {
     fruitSize = UNDEFINED_SIZE;
     verboseEnabled = false;
     ripe = true;
+    fruitSizeThreshold = 1000.0f; // default size threshold
 
 }
 
@@ -45,7 +46,7 @@ void Gripper::fsm_loop(int *PS4_status) {
         case STATE_INIT:
             setupGripper();
             boxServo.attach(SERVO_PIN);
-            boxServo.write(BOX_HOLD); // initial position
+            servoWobble(BOX_HOLD); // initial position
             stepperDisable(); // ensure stepper is disabled at init
             fsmState = STATE_GOOFY;
             Serial.println("WARNING : Entering GOOFY state. Please calibrate the gripper.");
@@ -56,11 +57,13 @@ void Gripper::fsm_loop(int *PS4_status) {
         case STATE_CALIBRATE_SERIAL:
             Serial.println("Starting calibration...");
             stepperSetOrigin_fromSerial();
+            gripController.setPressureOffset();
             fsmState = STATE_ARM;
             break;
         case STATE_CALIBRATE_PS4:
             Serial.println("Starting calibration...");
             stepperSetOrigin_fromPS4(PS4_status);
+            gripController.setPressureOffset();
             fsmState = STATE_ARM;
             break;
         case STATE_IDLE:
@@ -83,7 +86,15 @@ void Gripper::fsm_loop(int *PS4_status) {
         case STATE_ARM:
             stepperEnable();
             PPM_computer();
-            startTime_controller = millis();
+            break;
+        case STATE_FEEL:
+            gripController.readPressure();
+            if (gripController.checkSize()) {
+                finalPos = pos; // hold position
+                fsmState = STATE_SORT;
+            }
+            boxServo.write(BOX_HOLD); // hold position
+            PPM_computer();
             break;
         case STATE_GRIP:
             // Grip state actions
@@ -93,50 +104,58 @@ void Gripper::fsm_loop(int *PS4_status) {
                 Serial.println("Fruit not ripe enough to grip.");
                 fsmState = STATE_ARM;
                 finalPos = pos;
-                speed = 0;
             }
             else {
                 ripe = true;
                 gripController.readPressure();
                 gripSpeed = gripController.getOutputSpeed();
-                if (millis() - startTime_controller > 300 && gripController.checkSteadyState()) {
-                    fsmState = STATE_SORT;
+                if (millis() - startTime_controller > 150 && gripController.checkSteadyState()) {
+                    limitedBeep(10, 20); // confirm grip
+                    fsmState = STATE_RELEASE;
                     finalPos = pos;
                     speed = 0;
                     break;
                 }
-                microSteppingMode = 16; // best precision for gripping
+                //microSteppingMode = 16; // best precision for gripping
                 gripController.PID_computer();
                 stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
-                boxServo.write(BOX_HOLD); // hold position
             }
             break;
         case STATE_SORT:
             // Sort state actions
             microSteppingMode = 2; // default microstepping mode
-            static float outputSize = 0.0f;
-            outputSize = InterpolToLength(pos);
             Serial.print("Size of fruit: ");
-            Serial.println(outputSize);
+            Serial.print(pos);
+            Serial.println(" steps");
             Serial.print("Classified as: ");
-            if (outputSize < FRUIT_SIZE_THRESHOLD) {
+            if (pos < fruitSizeThreshold) {
                 fruitSize = FRUIT_SMALL;
                 Serial.println("SMALL");
+                Serial.println("----------------");
                 limitedBeep(200, 2);
             } else {
                 fruitSize = FRUIT_LARGE;
                 Serial.println("LARGE");
+                Serial.println("----------------");
+
                 limitedBeep(200, 4);
             }
             fsmState = STATE_MOVE_BOX;
             break;
         case STATE_MOVE_BOX:
             boxServo.write(fruitSize == FRUIT_SMALL ? BOX_SMALL : BOX_LARGE); // hold position
-            fsmState = STATE_RELEASE;
+            fsmState = STATE_GRIP;
+            startTime_controller = millis();
             break;
         case STATE_RELEASE:
-            // Release state actions
-            // nothing
+            if (PS4_status[BUTTON_CROSS] == 1) { // Circle button pressed
+                finalPos = MAX_POSITION - 1;
+                PPM_computer();
+                finalPos = MAX_POSITION;
+                fsmState = STATE_ARM;
+                PS4_status[BUTTON_CROSS] = -1;
+            }
+
             break;
         case STATE_DEBUG_STEPPER:
             verbose(PS4_status);
@@ -402,19 +421,6 @@ void Gripper::stepperSetOrigin_fromPS4(int *PS4_status) {
 }
 
 //================================================================================================================
-// Measures fruit size based on current gripper position
-//================================================================================================================
-void Gripper::getFruitSize() {
-    static float openingLength = 0.0f;
-    openingLength = InterpolToLength(static_cast<float>(pos));
-    if (openingLength < FRUIT_SIZE_THRESHOLD) {
-        fruitSize = FRUIT_SMALL; // Small fruit
-    } else {
-        fruitSize = FRUIT_LARGE; // Large fruit
-    }
-}
-
-//================================================================================================================
 // Configures MS1 and MS2 pins to set microstepping resolution (2, 4, 8, or 16)
 // Inline for performance in stepperUpdate loop
 //================================================================================================================
@@ -546,6 +552,37 @@ void Gripper::setRipeness(bool isRipe) {
     ripe = isRipe;
 }
 
+//================================================================================================================
+// Sets fruit size threshold for classification
+//================================================================================================================
+void Gripper::setFruitSizeThreshold(float threshold) {
+    fruitSizeThreshold = threshold;
+}
+
+void Gripper::servoWobble(int angle) {
+    static unsigned long lastTime = 0;
+    if (angle > servoLastAngle) {
+        lastTime = millis();
+        while(millis() - lastTime < 3000) {
+            boxServo.write(BOX_SMALL_EMPTY);
+            delay(25);
+            boxServo.write(angle);
+            delay(100);
+        }
+        servoLastAngle = angle;
+    }
+    else {
+        lastTime = millis();
+        while(millis() - lastTime < 3000) {
+            boxServo.write(BOX_LARGE_EMPTY);
+            delay(50);
+            boxServo.write(angle);
+            delay(150);
+        }
+        servoLastAngle = angle;
+    }
+}
+
 void Gripper::verbose(int *PS4_status) {
     Serial.println("================================================");
     Serial.println("GRIPPER STATUS:");
@@ -568,6 +605,7 @@ void Gripper::verbose(int *PS4_status) {
     else if (fsmState == STATE_CALIBRATE_SERIAL) Serial.println("CALIBRATE_SERIAL");
     else if (fsmState == STATE_CALIBRATE_PS4) Serial.println("CALIBRATE_PS4");
     else if (fsmState == STATE_GRIP) Serial.println("GRIP");
+    else if (fsmState == STATE_FEEL) Serial.println("FEEL");
     else if (fsmState == STATE_SORT) Serial.println("SORT");
     else if (fsmState == STATE_MOVE_BOX) Serial.println("MOVE_BOX");
     else if (fsmState == STATE_RELEASE) Serial.println("RELEASE");
@@ -600,11 +638,13 @@ void Gripper::verbose(int *PS4_status) {
 
 controller::controller() {
     // Initialize PID
-    KP = 0.1;
+    KP = 1;
     KI = 0.0;
-    KD = 0.01;
+    KD = 0.1;
     pressure = 0.0;
-    pressureSetpoint = 1000.0; // default setpoint
+    pressureSetpoint = 500.0; // default setpoint
+    pressureOffset = 0.0;
+    pressureSizeThreshold = 100.0f; // default size threshold
     error = 0.0;
     lastError = 0.0;
     integral = 0.0;
@@ -646,6 +686,32 @@ void controller::PID_computer() {
     outputSpeed = static_cast<int>(analogOutput);
 }
 
+bool controller::checkSize() {
+    static float pressureSum = 0.0f;
+    static int pressureCount = 0;
+    static unsigned long lastResetTime = 0;
+    static float averagePressure = 0.0f;
+
+    unsigned long currentTime = millis();
+
+    // Accumulate pressure readings
+    pressureSum += pressure;
+    pressureCount++;
+
+    // Check if interval has elapsed
+    if (currentTime - lastResetTime >= PRESSURE_AVERAGE_TIME_INTERVAL) {
+        averagePressure = pressureSum / pressureCount;
+        
+        // Reset for next interval
+        pressureSum = 0.0f;
+        pressureCount = 0;
+        lastResetTime = currentTime;
+    }
+
+    // Return true if average pressure exceeds the threshold
+    return (averagePressure >= pressureSizeThreshold);
+}
+
 bool controller::checkSteadyState() {
     static float errorSum = 0.0;
     static int errorCount = 0;
@@ -660,7 +726,7 @@ bool controller::checkSteadyState() {
     errorCount++;
     
     // Check if interval has elapsed
-    if (currentTime - lastResetTime >= AVERAGE_TIME_INTERVAL) {
+    if (currentTime - lastResetTime >= ERROR_AVERAGE_TIME_INTERVAL) {
         average = errorSum / errorCount;
         
         // Reset for next interval
@@ -677,6 +743,16 @@ void controller::setPressureSetpoint(float setpoint) {
     pressureSetpoint = setpoint;
 }
 
+void controller::setPressureOffset() {
+    static float analogOutput = 0.0;
+    analogOutput = analogRead(PRESSURE_SENSOR_PIN);
+    pressureOffset = analogOutput;
+}
+
+void controller::setPressureSizeThreshold(float threshold) {
+    pressureSizeThreshold = threshold;
+}
+
 void controller::setKP(float kp) {
     KP = kp;
 }
@@ -690,7 +766,7 @@ void controller::setKD(float kd) {
 void controller::readPressure() {
     static float analogOutput = 0.0;
     analogOutput = analogRead(PRESSURE_SENSOR_PIN);
-    pressure = analogOutput;
+    pressure = analogOutput - pressureOffset; // apply offset
 }
 
 int controller::getOutputSpeed() {
@@ -751,17 +827,11 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
 
     if (PS4_status[BUTTON_CIRCLE] == 1) { // Circle button pressed
         if (gripper->getfsmState() == STATE_ARM) {
-            gripper->setState(STATE_GRIP);
+            gripper->setState(STATE_FEEL);
+            gripper->setPosition(MIN_POSITION); // close gripper
+            gripController.setPressureOffset();
         }
         PS4_status[BUTTON_CIRCLE] = -1;
-    }
-
-    if (PS4_status[BUTTON_CROSS] == 1) { // Square button pressed
-        if (gripper->getfsmState() == STATE_RELEASE) {
-            gripper->setState(STATE_ARM);
-            gripper->setPosition(MAX_POSITION);
-        }
-        PS4_status[BUTTON_CROSS] = -1;
     }
 
     if (PS4_status[BUTTON_RIGHT] == 1) { // Right button pressed, long press enabled
@@ -789,19 +859,19 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
     }
 
     if (PS4_status[BUTTON_R2] == 1) { // R2 button pressed
-        boxServo.write(BOX_SMALL_EMPTY); // empty small box
+        gripper->servoWobble(BOX_SMALL_EMPTY); // empty small box
         limitedBeep(100, 1);
         PS4_status[BUTTON_R2] = -1;
     }
 
     if (PS4_status[BUTTON_L2] == 1) { // L2 button pressed
-        boxServo.write(BOX_LARGE_EMPTY); // empty large box
+        gripper->servoWobble(BOX_LARGE_EMPTY); // empty large box
         limitedBeep(100, 1);
         PS4_status[BUTTON_L2] = -1;
     }
 
     if (PS4_status[BUTTON_L1] == 1) { // L1 button pressed
-        boxServo.write(BOX_HOLD); // hold position
+        gripper->servoWobble(BOX_HOLD); // hold position
         limitedBeep(100, 1);
         PS4_status[BUTTON_L1] = -1;
     }
@@ -934,8 +1004,35 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
                     return;
                 }
                 int servoPos = atoi(arg2);
-                servoWobble(servoPos);
+                gripper->servoWobble(servoPos);
                 Serial.println("Servo position set.");
+            }
+            if (strcmp(arg1, "psize") == 0) { // set pressure size threshold
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing pressure size threshold argument.");
+                    return;
+                }
+                float psize = atof(arg2);
+                gripController.setPressureSizeThreshold(psize);
+                Serial.println("Pressure sensor offset calibrated.");
+            }
+            if (strcmp(arg1, "pthr") == 0) { // set pressure grip threshold
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing pressure size threshold argument.");
+                    return;
+                }
+                float pthr = atof(arg2);
+                gripController.setPressureSizeThreshold(pthr);
+                Serial.println("Pressure size threshold set.");
+            }
+            if (strcmp(arg1, "sthr") == 0) { // set size threshold
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing fruit size threshold argument.");
+                    return;
+                }
+                float sthr = atof(arg2);
+                gripper->setFruitSizeThreshold(sthr);
+                Serial.println("Fruit size threshold set.");
             }
         }
         if (strcmp(cmd, cmdStrings[1]) == 0) { // get
@@ -1014,15 +1111,9 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
     else return;
 }
 
-//================================================================
-void servoWobble(int angle) {
-    static int increase = 10;
-    for(int i = 0; boxServo.read() != angle; i ++)
-    {
-        int sign = ((i % 3 == 0) ? -1 : 1);
-        boxServo.write((boxServo.read() + increase) * sign);
-    }
-}
+
+
+
 
 
 

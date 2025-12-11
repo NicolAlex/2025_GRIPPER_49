@@ -10,16 +10,21 @@ public:
     
     bool checkSteadyState();
 
+    bool checkSize();
+
     void setPressureSetpoint(float setpoint);
+    void setPressureOffset();
     void setKP(float kp);
     void setKI(float ki);
     void setKD(float kd);
+    void setPressureSizeThreshold(float threshold);
     void readPressure();
 
     int getOutputSpeed();
     float getPressure();
     float getSetpoint();
     float getError();
+    float getPressureSizeThreshold();
 
 private:
     float KP;
@@ -30,6 +35,8 @@ private:
 
     float pressure;
     float pressureSetpoint;
+    float pressureOffset;
+    float pressureSizeThreshold;
     float error;
     float lastError;
     float integral;
@@ -65,6 +72,7 @@ public:
     void setMinOpSpeed(int minSpeed);
     void setOpAccel(float accel);
     void setRipeness(bool isRipe);
+    void setFruitSizeThreshold(float threshold);
 
     int32_t getPosition();
     int32_t getStepCount();
@@ -80,6 +88,8 @@ public:
 
     void stepperEnable();
     void stepperDisable();
+
+    void servoWobble(int angle);
 
     void verbose(int *PS4_status);
 
@@ -107,8 +117,11 @@ private:
     float opAccel;
 
     int fruitSize;
+    float fruitSizeThreshold;
 
     bool ripe;
+
+    int servoLastAngle;
 
 
 };
