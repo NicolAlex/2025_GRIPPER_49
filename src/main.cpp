@@ -181,9 +181,11 @@ void PS4_sendData() {
         static const int LED_IDLE[3] = {218, 86, 255};
         static const int LED_ARMED[3] = {0, 255, 100};
         static const int LED_UNIFORM_MOVE[3] = {255, 189, 0};
+        static const int LED_FEEL[3] = {80, 255, 0};
         static const int LED_GRIP[3] = {255, 0, 0};
+        static const int LED_RELEASE[3] = {70, 0, 255};
         static const int LED_DEFAULT[3] = {255, 160, 160};
-
+        
         if (gripper.getfsmState() == STATE_IDLE) {
             PS4.setLed(LED_IDLE[R], LED_IDLE[G], LED_IDLE[B]);
             PS4.setRumble(0, 0);
@@ -193,10 +195,16 @@ void PS4_sendData() {
         } else if (gripper.getfsmState() == STATE_UNIFORM_MOVE) {
             PS4.setLed(LED_UNIFORM_MOVE[R], LED_UNIFORM_MOVE[G], LED_UNIFORM_MOVE[B]);
             PS4.setRumble(100, 0);
+        } else if (gripper.getfsmState() == STATE_FEEL) {
+            PS4.setLed(LED_FEEL[R], LED_FEEL[G], LED_FEEL[B]);
+            PS4.setRumble(0, 0);
         } else if (gripper.getfsmState() == STATE_GRIP) {
             PS4.setLed(LED_GRIP[R], LED_GRIP[G], LED_GRIP[B]);
             PS4.setRumble(0, 0);
-        } else {
+        } else if (gripper.getfsmState() == STATE_RELEASE) {
+            PS4.setLed(LED_RELEASE[R], LED_RELEASE[G], LED_RELEASE[B]);
+            PS4.setRumble(0, 100);
+        }else {
             PS4.setLed(LED_DEFAULT[R], LED_DEFAULT[G], LED_DEFAULT[B]);
             PS4.setRumble(0, 0);
         }

@@ -29,6 +29,7 @@ Gripper::Gripper() {
     maxOpSpeed = MAX_STEPPER_SPEED;
     minOpSpeed = 50;
     opAccel = 1000.0f; // steps/sec^2
+    releaseTimer = 5000;
     fruitSize = UNDEFINED_SIZE;
     verboseEnabled = false;
     ripe = true;
@@ -42,6 +43,7 @@ Gripper::Gripper() {
 //================================================================================================================
 void Gripper::fsm_loop(int *PS4_status) {
     static unsigned long startTime_controller = millis();
+    static unsigned long startTime_release = millis();
     switch(fsmState) {
         case STATE_INIT:
             setupGripper();
@@ -86,40 +88,50 @@ void Gripper::fsm_loop(int *PS4_status) {
         case STATE_ARM:
             stepperEnable();
             PPM_computer();
+            statusLedBlinking(LOW);
             break;
         case STATE_FEEL:
-            gripController.readPressure();
-            if (gripController.checkSize()) {
-                finalPos = pos; // hold position
-                fsmState = STATE_SORT;
-            }
-            boxServo.write(BOX_HOLD); // hold position
-            PPM_computer();
-            break;
-        case STATE_GRIP:
-            // Grip state actions
-            static int gripSpeed = 0;
             if (!ripe) {
                 limitedBeep(25, 12); // alert for unripe fruit
                 Serial.println("Fruit not ripe enough to grip.");
                 fsmState = STATE_ARM;
-                finalPos = pos;
+                finalPos = MAX_POSITION - 1;
+                PPM_computer();
+                finalPos = MAX_POSITION;
             }
             else {
                 ripe = true;
                 gripController.readPressure();
-                gripSpeed = gripController.getOutputSpeed();
-                if (millis() - startTime_controller > 150 && gripController.checkSteadyState()) {
-                    limitedBeep(10, 20); // confirm grip
-                    fsmState = STATE_RELEASE;
-                    finalPos = pos;
-                    speed = 0;
-                    break;
+                if (gripController.checkSize()) {
+                    finalPos = pos; // hold position
+                    fsmState = STATE_SORT;
+                    statusLedBlinking(LOW);
                 }
-                //microSteppingMode = 16; // best precision for gripping
-                gripController.PID_computer();
-                stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
+                boxServo.write(BOX_HOLD); // hold position
+                PPM_computer();
+                statusLedBlinking(HIGH);
             }
+            break;
+        case STATE_GRIP:
+            // Grip state actions
+            static int gripSpeed = 0;
+            gripController.readPressure();
+            gripSpeed = gripController.getOutputSpeed();
+            if (millis() - startTime_controller > 150 && gripController.checkSteadyState()) {
+                limitedBeep(10, 20); // confirm grip
+                startTime_release = millis();
+                fsmState = STATE_RELEASE;
+                finalPos = pos;
+                speed = 0;
+                statusLedBlinking(LOW);
+                break;
+            }
+            //Serial.print(">press:");
+            //Serial.println(gripController.getPressure(), 3);
+            //microSteppingMode = 16; // best precision for gripping
+            gripController.PID_computer();
+            stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
+            statusLedBlinking(HIGH);
             break;
         case STATE_SORT:
             // Sort state actions
@@ -138,7 +150,7 @@ void Gripper::fsm_loop(int *PS4_status) {
                 Serial.println("LARGE");
                 Serial.println("----------------");
 
-                limitedBeep(200, 4);
+                limitedBeep(100, 4);
             }
             fsmState = STATE_MOVE_BOX;
             break;
@@ -148,14 +160,13 @@ void Gripper::fsm_loop(int *PS4_status) {
             startTime_controller = millis();
             break;
         case STATE_RELEASE:
-            if (PS4_status[BUTTON_CROSS] == 1) { // Circle button pressed
+            if (PS4_status[BUTTON_CROSS] == 1 || millis() - startTime_release > 5000) { // Circle button pressed or timeout
                 finalPos = MAX_POSITION - 1;
                 PPM_computer();
                 finalPos = MAX_POSITION;
                 fsmState = STATE_ARM;
                 PS4_status[BUTTON_CROSS] = -1;
             }
-
             break;
         case STATE_DEBUG_STEPPER:
             verbose(PS4_status);
@@ -401,6 +412,10 @@ void Gripper::stepperSetOrigin_fromSerial() {
     Serial.println("Gripper armed !");
 }
 
+//================================================================================================================
+// Interactive calibration from PS4 controller: waits for user to manually close gripper
+// Waits for PS4 O button press to confirm, then sets position to zero
+//================================================================================================================
 void Gripper::stepperSetOrigin_fromPS4(int *PS4_status) {
     Serial.println("manually close the gripper and press O when done");
     digitalWrite(ENABLE_PIN, HIGH); // enforce disable to allow manual movement
@@ -454,62 +469,43 @@ inline void Gripper::setMicroSteps() {
 }
 
 //================================================================================================================
-// Returns current logical position in user-defined steps
+// GRIPPER GETTERS: Return current gripper state and position information
 //================================================================================================================
 int32_t Gripper::getPosition() {
     return pos;
 }
 
-//================================================================================================================
-// Returns target position the gripper is moving towards
-//================================================================================================================
 int32_t Gripper::getFinalPosition() {
     return finalPos;
 }
 
-//================================================================================================================
-// Returns raw hardware step count from the stepper driver
-//================================================================================================================
 int32_t Gripper::getStepCount() {
     return step;
 }
 
-//================================================================================================================
-// Returns current microstepping mode (2, 4, 8, or 16)
-//================================================================================================================
 int32_t Gripper::getMicroSteppingMode() {
     return microSteppingMode;
 }
 
-//================================================================================================================
-// Returns current motor speed in steps per minute
-//================================================================================================================
 int Gripper::getSpeed() {
     return speed;
 }
 
-// ================================================================================================================
 int Gripper::getfsmState() {
     return fsmState;
 }
 
 //================================================================================================================
-// Sets new target position for the gripper to move to
+// GRIPPER SETTERS: Configure gripper behavior and parameters
 //================================================================================================================
 void Gripper::setPosition(int32_t newPos) {
     finalPos = newPos;
 }
 
-//================================================================================================================
-// Manually sets the motor speed (useful for testing or override)
-//================================================================================================================
 void Gripper::setSpeed(int newSpeed) {
     speed = newSpeed;
 }
 
-//================================================================================================================
-// Updates microstepping resolution (2, 4, 8, or 16 microsteps per full step)
-//================================================================================================================
 void Gripper::setMicroSteppingMode(int newMicroSteps) {
     if (newMicroSteps != 2 && newMicroSteps != 4 && newMicroSteps != 8 && newMicroSteps != 16) {
         Serial.println("Invalid microstepping mode. Must be 2, 4, 8, or 16.");
@@ -519,46 +515,39 @@ void Gripper::setMicroSteppingMode(int newMicroSteps) {
     microSteppingMode = newMicroSteps;
 }
 
-//================================================================================================================
-// Sets maximum operational speed for motion profiling
-//================================================================================================================
 void Gripper::setMaxOpSpeed(int maxSpeed) {
     if (maxSpeed < 0) maxSpeed = 0;
     else if (maxSpeed > MAX_STEPPER_SPEED) maxSpeed = MAX_STEPPER_SPEED;
     else maxOpSpeed = maxSpeed;
 }
 
-//================================================================================================================
-// Sets minimum operational speed for motion profiling
-//================================================================================================================
 void Gripper::setMinOpSpeed(int minSpeed) {
     if (minSpeed < 0) minSpeed = 0;
     else if (minSpeed > MAX_STEPPER_SPEED) minSpeed = MAX_STEPPER_SPEED;
     else minOpSpeed = minSpeed;
 }
 
-//================================================================================================================
-// Sets acceleration for motion profiling
-//================================================================================================================
 void Gripper::setOpAccel(float accel) {
     if (accel < 0) accel = 0;
     opAccel = accel;
 }
 
-//================================================================================================================
-// Sets ripeness information for the gripper
-//================================================================================================================
 void Gripper::setRipeness(bool isRipe) {
     ripe = isRipe;
 }
 
-//================================================================================================================
-// Sets fruit size threshold for classification
-//================================================================================================================
 void Gripper::setFruitSizeThreshold(float threshold) {
     fruitSizeThreshold = threshold;
 }
 
+void Gripper::setReleaseTimer(unsigned long duration) {
+    releaseTimer = duration;
+}
+
+//================================================================================================================
+// Makes the servo wobble between two positions
+// Animates servo movement to show visual feedback or reset position
+//================================================================================================================
 void Gripper::servoWobble(int angle) {
     static unsigned long lastTime = 0;
     if (angle > servoLastAngle) {
@@ -583,6 +572,10 @@ void Gripper::servoWobble(int angle) {
     }
 }
 
+//================================================================================================================
+// Prints detailed gripper status information to Serial
+// Displays current position, speed, FSM state, controller error, and pressed buttons
+//================================================================================================================
 void Gripper::verbose(int *PS4_status) {
     Serial.println("================================================");
     Serial.println("GRIPPER STATUS:");
@@ -628,23 +621,18 @@ void Gripper::verbose(int *PS4_status) {
     Serial.println();
 }
 
-
-
-
-
-
-
-
-
+//================================================================================================================
+// Constructor: Initialize controller with default PID parameters and values
+//================================================================================================================
 controller::controller() {
     // Initialize PID
     KP = 1;
     KI = 0.0;
     KD = 0.1;
     pressure = 0.0;
-    pressureSetpoint = 500.0; // default setpoint
+    pressureSetpoint = 1200.0; // default setpoint
     pressureOffset = 0.0;
-    pressureSizeThreshold = 100.0f; // default size threshold
+    pressureSizeThreshold = 50.0f; // default size threshold
     error = 0.0;
     lastError = 0.0;
     integral = 0.0;
@@ -655,6 +643,10 @@ controller::controller() {
     outputSpeed = 0;
 }
 
+//================================================================================================================
+// Computes PID control output for pressure regulation
+// Calculates proportional, integral, and derivative terms based on error and converts to speed command
+//================================================================================================================
 void controller::PID_computer() {
     // Read current pressure
     readPressure();
@@ -686,6 +678,11 @@ void controller::PID_computer() {
     outputSpeed = static_cast<int>(analogOutput);
 }
 
+//================================================================================================================
+// Checks if fruit size threshold has been reached
+// Accumulates average pressure over time interval and compares against size threshold
+// Returns true if average pressure exceeds threshold within the sampling interval
+//================================================================================================================
 bool controller::checkSize() {
     static float pressureSum = 0.0f;
     static int pressureCount = 0;
@@ -712,6 +709,11 @@ bool controller::checkSize() {
     return (averagePressure >= pressureSizeThreshold);
 }
 
+//================================================================================================================
+// Checks if the controller error has reached a steady state
+// Averages absolute error over time interval and compares against error threshold
+// Returns true if average error is below threshold (steady state achieved)
+//================================================================================================================
 bool controller::checkSteadyState() {
     static float errorSum = 0.0;
     static int errorCount = 0;
@@ -739,6 +741,9 @@ bool controller::checkSteadyState() {
     return steady;
 }
 
+//================================================================================================================
+// CONTROLLER SETTERS: Configure pressure control parameters
+//================================================================================================================
 void controller::setPressureSetpoint(float setpoint) {
     pressureSetpoint = setpoint;
 }
@@ -756,9 +761,11 @@ void controller::setPressureSizeThreshold(float threshold) {
 void controller::setKP(float kp) {
     KP = kp;
 }
+
 void controller::setKI(float ki) {
     KI = ki;
 }
+
 void controller::setKD(float kd) {
     KD = kd;
 }
@@ -769,6 +776,9 @@ void controller::readPressure() {
     pressure = analogOutput - pressureOffset; // apply offset
 }
 
+//================================================================================================================
+// CONTROLLER GETTERS: Return controller state and sensor readings
+//================================================================================================================
 int controller::getOutputSpeed() {
     return outputSpeed;
 }
@@ -781,12 +791,10 @@ float controller::getError() {
     return error;
 }
 
-
-
-
-
-
-
+//================================================================================================================
+// Handles PS4 controller input commands and updates gripper FSM state
+// Maps button presses to gripper control actions (calibration, arm/disarm, movement, etc.)
+//================================================================================================================
 void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
 
     static bool rotating = false;
@@ -859,7 +867,7 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
     }
 
     if (PS4_status[BUTTON_R2] == 1) { // R2 button pressed
-        gripper->servoWobble(BOX_SMALL_EMPTY); // empty small box
+        boxServo.write(BOX_SMALL_EMPTY); // empty small box
         limitedBeep(100, 1);
         PS4_status[BUTTON_R2] = -1;
     }
@@ -877,7 +885,10 @@ void PS4_cmdHandler(Gripper* gripper, int *PS4_status) {
     }
 }
 
-
+//================================================================================================================
+// Handles serial command input and routes to appropriate gripper control functions
+// Parses commands (set, get, cal, arm, disarm, etc.) and updates gripper parameters
+//================================================================================================================
 void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
 
     static const char* cmdStrings[] = {
@@ -1034,6 +1045,15 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
                 gripper->setFruitSizeThreshold(sthr);
                 Serial.println("Fruit size threshold set.");
             }
+            if (strcmp(arg1, "rtimer") == 0) { // set release timer
+                if (strlen(arg2) == 0) {
+                    Serial.println("Error: Missing release timer argument.");
+                    return;
+                }
+                unsigned long rtimer = atol(arg2);
+                gripper->setReleaseTimer(rtimer);
+                Serial.println("Release timer duration set.");
+            }
         }
         if (strcmp(cmd, cmdStrings[1]) == 0) { // get
             if (strlen(arg1) == 0) {
@@ -1100,8 +1120,9 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
             digitalWrite(LED5_PIN, HIGH); // Indicate ripe status
         }
         if (strcmp(cmd, cmdStrings[16]) == 0) { // UNRIPE information
-            if (gripper->getfsmState() != STATE_GRIP) {
+            if (gripper->getfsmState() != STATE_FEEL) {
                 gripper->setRipeness(false);
+                digitalWrite(LED5_PIN, LOW); // Indicate unripe status
             }
         }
 
@@ -1109,54 +1130,6 @@ void serial_cmdHandler(Gripper* gripper, int *PS4_status) {
         // Handle other commands similarly...
     }
     else return;
-}
-
-
-
-
-
-
-
-//================================================================================================================
-// Converts gripper finger length to motor rotation angle via linear interpolation
-// Uses lookup table interpolSample for non-linear kinematics
-//================================================================================================================
-float InterpolToAngle(float length) {
-    static float ratio = 0.0;
-    if (length <= interpolSample[0][0]) {
-        return interpolSample[0][1];
-    }
-    if (length >= interpolSample[INTERPOL_SAMPLES - 1][0]) {
-        return interpolSample[INTERPOL_SAMPLES - 1][1];
-    }
-    for (int i = 0; i < INTERPOL_SAMPLES - 1; i++) {
-        if (length >= interpolSample[i][0] && length <= interpolSample[i + 1][0]) {
-            ratio = (length - interpolSample[i][0]) / (interpolSample[i + 1][0] - interpolSample[i][0]);
-            return interpolSample[i][1] + ratio * (interpolSample[i + 1][1] - interpolSample[i][1]);
-        }
-    }
-    return interpolSample[INTERPOL_SAMPLES - 1][1];
-}
-
-//================================================================================================================
-// Converts motor rotation angle to gripper finger length via linear interpolation
-// Inverse of interpolToAngle for kinematic feedback
-//================================================================================================================
-float InterpolToLength(float angle) {
-    static float ratio = 0.0;
-    if (angle <= interpolSample[0][1]) {
-        return interpolSample[0][0];
-    }
-    if (angle >= interpolSample[INTERPOL_SAMPLES - 1][1]) {
-        return interpolSample[INTERPOL_SAMPLES - 1][0];
-    }
-    for (int i = 0; i < INTERPOL_SAMPLES - 1; i++) {
-        if (angle >= interpolSample[i][1] && angle <= interpolSample[i + 1][1]) {
-            ratio = (angle - interpolSample[i][1]) / (interpolSample[i + 1][1] - interpolSample[i][1]);
-            return interpolSample[i][0] + ratio * (interpolSample[i + 1][0] - interpolSample[i][0]);
-        }
-    }
-    return interpolSample[INTERPOL_SAMPLES - 1][0];
 }
 
 //================================================================================================================
@@ -1251,35 +1224,10 @@ void statusLedBlinking(bool enabled) {
 }
 
 //================================================================================================================
-// Controls buzzer with timed beep: setup=true starts beep, false checks/stops after duration
-// Non-blocking implementation for integration in main loop
+// Produces repeated buzzer beeps: blocking function that produces ms-duration beeps separated by ms delays
+// bips parameter controls number of beep pulses to emit
 //================================================================================================================
-void buzzerBeep(int duration, bool setup) {
-    static unsigned long beepStartTime = 0;
-    static bool isBeeping = false;
-
-    if (setup) {
-        digitalWrite(BUZZER_PIN, HIGH);
-        beepStartTime = millis();
-        isBeeping = true;
-        return;
-    }
-
-    if (!isBeeping && setup == true) {
-        // Start the beep
-        digitalWrite(BUZZER_PIN, HIGH);
-        beepStartTime = millis();
-        isBeeping = true;
-    } else {
-        // Check if the duration has elapsed
-        if (millis() - beepStartTime >= duration) {
-            digitalWrite(BUZZER_PIN, LOW);
-            isBeeping = false;
-        }
-    }
-}
-
-void limitedBeep(int ms, int bips) {           //beep temporaire
+void limitedBeep(int ms, int bips) {
   while (bips) {
     digitalWrite(BUZZER_PIN,HIGH);
     delay(ms);
@@ -1289,10 +1237,16 @@ void limitedBeep(int ms, int bips) {           //beep temporaire
   }
 }
 
-// Helper conversions (keep near top of file or before class methods)
+//================================================================================================================
+// Converts RPM speed to steps per second (full steps, excluding microstepping)
+//================================================================================================================
 static inline float rpmToStepsPerSec(int rpm) {
     return (rpm * 200.0f) / 60.0f; // full steps/sec (microstepping excluded intentionally)
 }
+
+//================================================================================================================
+// Converts steps per second to RPM speed (full steps, excluding microstepping)
+//================================================================================================================
 static inline int stepsPerSecToRpm(float sps) {
     return (int) ((sps * 60.0f) / 200.0f);
 }

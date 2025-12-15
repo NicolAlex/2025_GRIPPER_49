@@ -73,6 +73,7 @@ public:
     void setOpAccel(float accel);
     void setRipeness(bool isRipe);
     void setFruitSizeThreshold(float threshold);
+    void setReleaseTimer(unsigned long duration);
 
     int32_t getPosition();
     int32_t getStepCount();
@@ -116,6 +117,8 @@ private:
     int minOpSpeed;
     float opAccel;
 
+    unsigned long releaseTimer;
+
     int fruitSize;
     float fruitSizeThreshold;
 
@@ -128,10 +131,6 @@ private:
 
 void serial_cmdHandler(Gripper* gripper, int *PS4_status);
 void PS4_cmdHandler(Gripper* gripper, int *PS4_status);
-
-float InterpolToAngle(float length);
-float InterpolToLength(float angle);
-
 void servoWobble(int angle);
 
 void sendMessage(const char* msg);
