@@ -38,7 +38,7 @@
 
 // constants for PID controller
 #define MAX_OPENING 100       // Maximum opening distance in mm
-#define ERROR_THRESHOLD 50   // Threshold for steady state detection
+#define ERROR_THRESHOLD 10   // Threshold for steady state detection
 #define ERROR_AVERAGE_TIME_INTERVAL 100 // Time interval for averaging error in ms
 #define PRESSURE_AVERAGE_TIME_INTERVAL 20 // Time interval for averaging pressure in ms for size detection
 

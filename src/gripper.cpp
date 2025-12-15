@@ -126,8 +126,8 @@ void Gripper::fsm_loop(int *PS4_status) {
                 statusLedBlinking(LOW);
                 break;
             }
-            //Serial.print(">press:");
-            //Serial.println(gripController.getPressure(), 3);
+            Serial.print(">press:");
+            Serial.println(gripController.getPressure(), 3);
             //microSteppingMode = 16; // best precision for gripping
             gripController.PID_computer();
             stepperSetDir( (gripSpeed >=0) ? 1 : -1, abs(gripSpeed), microSteppingMode);
@@ -626,11 +626,11 @@ void Gripper::verbose(int *PS4_status) {
 //================================================================================================================
 controller::controller() {
     // Initialize PID
-    KP = 1;
-    KI = 0.0;
-    KD = 0.1;
-    pressure = 0.0;
-    pressureSetpoint = 1200.0; // default setpoint
+    KP = 2.0f;
+    KI = 0.0f;
+    KD = 0.0f;
+    pressure = 0.0f;
+    pressureSetpoint = 2000.0f; // default setpoint
     pressureOffset = 0.0;
     pressureSizeThreshold = 50.0f; // default size threshold
     error = 0.0;
