@@ -33,7 +33,7 @@ Gripper::Gripper() {
     fruitSize = UNDEFINED_SIZE;
     verboseEnabled = false;
     ripe = true;
-    fruitSizeThreshold = 1000.0f; // default size threshold
+    fruitSizeThreshold = 900.0f; // default size threshold
 
 }
 
@@ -630,7 +630,7 @@ controller::controller() {
     KI = 0.0f;
     KD = 0.0f;
     pressure = 0.0f;
-    pressureSetpoint = 2000.0f; // default setpoint
+    pressureSetpoint = 1250.0f; // default setpoint
     pressureOffset = 0.0;
     pressureSizeThreshold = 50.0f; // default size threshold
     error = 0.0;
