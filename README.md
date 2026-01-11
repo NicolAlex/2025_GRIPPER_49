@@ -82,9 +82,9 @@ Motor control features:
 ## PS4 Controller Setup
 
 1. Pair your PS4 controller using a pairing tool (see [PS4-esp32 documentation](lib/PS4-esp32/README.md))
-2. Update the MAC address in `src/main.cpp` in the `PS4.begin()` call within `setup()`:
+2. Update the MAC address parameter in the `PS4.begin()` call in `src/main.cpp` `setup()` function:
    ```cpp
-   PS4.begin("c8:c9:a3:c7:8d:7e"); // Replace with your controller's MAC
+   PS4.begin("c8:c9:a3:c7:8d:7e"); // Replace with your controller's MAC address
    ```
 3. Press the PS button to connect
 
