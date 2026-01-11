@@ -147,7 +147,7 @@ Access the serial terminal at 115200 baud to use these commands:
 This project uses the following open-source libraries:
 
 - **[MobaTools](https://github.com/MicroBahner/MobaTools)** by Franz-Peter Müller - Arduino library for non-blocking stepper and servo control with interrupt-driven step generation. Licensed under GPL v3.
-- **[PS4-esp32](https://github.com/aed3/PS4-esp32)** by aed3 - PS4 controller library for ESP32, based on esp32-ps3 by Jeffrey Pernis. Licensed under MIT.
+- **[PS4-esp32](https://github.com/aed3/PS4-esp32)** by aed3 - PS4 controller library for ESP32, based on esp32-ps3 by Jeffrey Pernis. Contains Bluetooth stack components from Broadcom Corporation licensed under Apache 2.0.
 
 ## License
 
