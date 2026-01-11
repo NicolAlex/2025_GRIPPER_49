@@ -4,7 +4,7 @@ An ESP32-based firmware for a robotic gripper system with stepper motor control 
 
 ## Features
 
-- **Delay-free state machine architecture** running synchronously in the main loop
+- **Non-blocking state machine architecture** running in the main loop without delays
 - **Non-blocking stepper motor control** using the MobaTools library with interrupt-driven step commands
 - **Software-based Position Profile Mode (PPM)** controller for smooth acceleration and deceleration
 - **Multi-modal control interfaces**:
@@ -36,7 +36,7 @@ See `src/constants.h` for detailed pin assignments:
 
 ## Software Architecture
 
-The firmware uses a **synchronous finite state machine** that processes inputs and updates outputs without blocking delays. Key states include:
+The firmware uses a **non-blocking finite state machine** that processes inputs and updates outputs without blocking delays. Key states include:
 - **IDLE/ARM**: Ready state, holding position
 - **FEEL**: Initial contact and ripeness detection
 - **GRIP**: PID-controlled gripping with pressure feedback
@@ -82,7 +82,7 @@ Motor control features:
 ## PS4 Controller Setup
 
 1. Pair your PS4 controller using a pairing tool (see [PS4-esp32 documentation](lib/PS4-esp32/README.md))
-2. Update the MAC address in `src/main.cpp` line 280:
+2. Update the MAC address in `src/main.cpp` in the `PS4.begin()` call within `setup()`:
    ```cpp
    PS4.begin("c8:c9:a3:c7:8d:7e"); // Replace with your controller's MAC
    ```
